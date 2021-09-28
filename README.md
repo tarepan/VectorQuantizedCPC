@@ -13,6 +13,8 @@ Clone of official implmentation of VQ-CPC+Vocoder for [voice conversion](https:/
 - [How to Use](#how-to-use)
     - [Requirements](#requirements)
     - [Install](#install)
+    - [Training](#training)
+    - [Evaluation](#evaluation)
 - [Original paper](#original-paper)
 - [Contact](#contact)
 
@@ -39,10 +41,8 @@ Pretrained weights for the 2019 English and Indonesian datasets can be found [he
 
 ### Install
 ```bash
-pip install requirements.txt
+pip install -r requirements.txt
 ```
-
-For evaluation install [bootphon/zerospeech2020](https://github.com/bootphon/zerospeech2020).
 
 ### Data and Preprocessing
 
@@ -68,53 +68,56 @@ For evaluation install [bootphon/zerospeech2020](https://github.com/bootphon/zer
 <!-- ### Training Speed <!- omit in toc ->
 X3.37 [iter/sec] @ NVIDIA T4 Google Colaboratory (AMP+)
  -->
- 
-1.  Train the VQ-CPC model (or download pretrained weights [here](https://github.com/bshall/VectorQuantizedCPC/releases/tag/v0.1)):
-    ```
-    python train_cpc.py checkpoint_dir=path/to/checkpoint_dir dataset=[2019/english or 2019/surprise]
-    ```
-    Example usage:
-    ```
-    python train_cpc.py checkpoint_dir=checkpoints/cpc/2019english dataset=2019/english
-    ```
-    
-2.  Train the vocoder:
-    ```
-    python train_vocoder.py cpc_checkpoint=path/to/cpc/checkpoint checkpoint_dir=path/to/checkpoint_dir dataset=[2019/english or 2019/surprise]
-    ```
-    Example usage:
-    ```
-    python train_vocoder.py cpc_checkpoint=checkpoints/cpc/english2019/model.ckpt-24000.pt checkpoint_dir=checkpoints/vocoder/english2019
-    ```
+Train VQ-CPC model, then train Vocoder model.  
+Pre-trained weight of both models are [here](https://github.com/bshall/VectorQuantizedCPC/releases/tag/v0.1).
+
+#### VQ-CPC
+```
+python train_cpc.py checkpoint_dir=path/to/checkpoint_dir dataset=[2019/english or 2019/surprise]
+```
+
+Example usage:
+```
+python train_cpc.py checkpoint_dir=checkpoints/cpc/2019english dataset=2019/english
+```
+
+#### Vocoder
+```
+python train_vocoder.py cpc_checkpoint=path/to/cpc/checkpoint checkpoint_dir=path/to/checkpoint_dir dataset=[2019/english or 2019/surprise]
+```
+
+Example usage:
+```
+python train_vocoder.py cpc_checkpoint=checkpoints/cpc/english2019/model.ckpt-24000.pt checkpoint_dir=checkpoints/vocoder/english2019
+```
 
 ### Evaluation
-    
+
 #### Voice conversion
+Convert speaker identity of specified voices to specified speaker.
 
 ```
 python convert.py cpc_checkpoint=path/to/cpc/checkpoint vocoder_checkpoint=path/to/vocoder/checkpoint in_dir=path/to/wavs out_dir=path/to/out_dir synthesis_list=path/to/synthesis_list dataset=[2019/english or 2019/surprise]
 ```
+
 Note: the `synthesis list` is a `json` file:
 ```
 [
     [
-        "english/test/S002_0379088085",
-        "V002",
-        "V002_0379088085"
+        "english/test/S002_0379088085", // the path (relative to `in_dir`) of the source `wav` files
+        "V002", // the target speaker (see `datasets/2019/english/speakers.json` for a list of options)
+        "V002_0379088085" // the target file name
     ]
 ]
 ```
-containing a list of items with a) the path (relative to `in_dir`) of the source `wav` files;
-b) the target speaker (see `datasets/2019/english/speakers.json` for a list of options);
-and c) the target file name.
 
 Example usage:
 ```
 python convert.py cpc_checkpoint=checkpoints/cpc/english2019/model.ckpt-25000.pt vocoder_checkpoint=checkpoints/vocoder/english2019/model.ckpt-150000.pt in_dir=../datasets/2020/2019 out_dir=submission/2019/english/test synthesis_list=datasets/2019/english/synthesis.json in_dir=../../Datasets/2020/2019 dataset=2019/english
 ```
-Voice conversion samples are available [here](https://bshall.github.io/VectorQuantizedCPC/).
 
 #### ABX Score
+For evaluation install [bootphon/zerospeech2020](https://github.com/bootphon/zerospeech2020).
     
 1.  Encode test data for evaluation:
     ```
@@ -126,41 +129,7 @@ Voice conversion samples are available [here](https://bshall.github.io/VectorQua
     
 2. Run ABX evaluation script (see [bootphon/zerospeech2020](https://github.com/bootphon/zerospeech2020)).
 
-The ABX score for the pretrained english model is:
-```
-{
-    "2019": {
-        "english": {
-            "scores": {
-                "abx": 13.444869807551896,
-                "bitrate": 421.3347459545065
-            },
-            "details_bitrate": {
-                "test": 421.3347459545065,
-                "auxiliary_embedding1": 817.3706731019037,
-                "auxiliary_embedding2": 817.6857350383482
-            },
-            "details_abx": {
-                "test": {
-                    "cosine": 13.444869807551896,
-                    "KL": 50.0,
-                    "levenshtein": 27.836903478166363
-                },
-                "auxiliary_embedding1": {
-                    "cosine": 12.47147337307366,
-                    "KL": 50.0,
-                    "levenshtein": 43.91132599798928
-                },
-                "auxiliary_embedding2": {
-                    "cosine": 12.29162067184495,
-                    "KL": 50.0,
-                    "levenshtein": 44.29540315886812
-                }
-            }
-        }
-    }
-}
-```
+You can preview ABX score of the pretrained english model in original repository; [link](https://github.com/bshall/VectorQuantizedCPC#abx-score)  
 
 ## Original paper
 [![Paper](http://img.shields.io/badge/paper-arxiv.2005.09409-B31B1B.svg)][paper]  

@@ -214,6 +214,10 @@ def get_gru_cell(gru):
 
 
 class Vocoder(nn.Module):
+    """Independently-trained vocoder conditioned on discrete VQ-CPC output.
+    
+    Model is bidirectional_PreNet + WaveRNN (=RNN_MS).
+    """
     def __init__(self, in_channels, n_speakers, speaker_embedding_dim,
                  conditioning_channels, mu_embedding_dim, rnn_channels,
                  fc_channels, bits, hop_length):
@@ -232,23 +236,33 @@ class Vocoder(nn.Module):
         self.fc2 = nn.Linear(fc_channels, self.quantization_channels)
 
     def forward(self, x, z, speakers):
+        """Forward a content representation sequence at once with teacher observation sequence for AR.
+        
+        Args:
+            x : μ-law encoded observation sequence for AR teacher signal
+            z : Content representation sequence for conditioning
+            speakers :
+        
+        Returns:
+            Energy distribution of `bits` bit μ-law value
+        """
+        
+        # PreNet for content and speaker representations
+        ## Content embedding and upsampling
         z = self.code_embedding(z)
         z = F.interpolate(z.transpose(1, 2), scale_factor=2)
         z = z.transpose(1, 2)
-
+        ## Speaker embedding and upsampling
         speakers = self.speaker_embedding(speakers)
         speakers = speakers.unsqueeze(1).expand(-1, z.size(1), -1)
-
-        z = torch.cat((z, speakers), dim=-1)
-        z, _ = self.rnn1(z)
-
+        ## Bidirectional GRU PreNet
+        z, _ = self.rnn1(torch.cat((z, speakers), dim=-1))
         z = F.interpolate(z.transpose(1, 2), scale_factor=self.hop_length)
         z = z.transpose(1, 2)
 
-        x = self.mu_embedding(x)
-        x, _ = self.rnn2(torch.cat((x, z), dim=2))
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
+        # WaveRNN
+        x, _ = self.rnn2(torch.cat((self.mu_embedding(x), z), dim=2))
+        x = self.fc2(F.relu(self.fc1(x)))
         return x
 
     def generate(self, z, speaker):
@@ -276,8 +290,7 @@ class Vocoder(nn.Module):
         for m in tqdm(torch.unbind(z, dim=1), leave=False):
             x = self.mu_embedding(x)
             h = cell(torch.cat((x, m), dim=1), h)
-            x = F.relu(self.fc1(h))
-            logits = self.fc2(x)
+            logits = self.fc2(F.relu(self.fc1(h)))
             dist = Categorical(logits=logits)
             x = dist.sample()
             output.append(2 * x.float().item() / (self.quantization_channels - 1.) - 1.)

@@ -15,6 +15,11 @@ from model import Encoder, Vocoder
 
 
 def save_checkpoint(decoder, optimizer, amp, scheduler, step, checkpoint_dir):
+    """Save model and learning states.
+    
+    Number in filename indicates global `step`.
+    """
+    
     checkpoint_state = {
         "vocoder": decoder.state_dict(),
         "optimizer": optimizer.state_dict(),
@@ -84,9 +89,11 @@ def train_model(cfg):
     start_epoch = global_step // len(dataloader) + 1
 
     for epoch in range(start_epoch, n_epochs + 1):
+        ################################ epoch ################################
         average_loss = 0
 
         for i, (audio, mels, speakers) in enumerate(tqdm(dataloader), 1):
+            ############################# step ############################
             audio, mels, speakers = audio.to(device), mels.to(device), speakers.to(device)
 
             optimizer.zero_grad()
@@ -107,14 +114,16 @@ def train_model(cfg):
 
             global_step += 1
 
+            # Checkpointing
+            #   global step based, not epoch based
             if global_step % cfg.training.checkpoint_interval == 0:
                 save_checkpoint(
                     vocoder, optimizer, amp, scheduler, global_step, checkpoint_dir)
-
+            ############################# step ############################
+        # Logging
         writer.add_scalar("loss/train", average_loss, global_step)
-
         print("epoch:{}, loss:{:.3E}".format(epoch, average_loss))
-
+        ############################### /epoch ################################
 
 if __name__ == "__main__":
     train_model()

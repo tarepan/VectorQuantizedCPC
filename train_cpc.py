@@ -16,6 +16,11 @@ from model import Encoder, CPCLoss
 
 
 def save_checkpoint(encoder, cpc, optimizer, scheduler, epoch, checkpoint_dir):
+    """Save model and learning states.
+    
+    Number in filename indicates `epoch`.
+    """
+    
     checkpoint_state = {
         "encoder": encoder.state_dict(),
         "cpc": cpc.state_dict(),
@@ -81,11 +86,13 @@ def train_model(cfg):
         drop_last=True)
 
     for epoch in range(start_epoch, cfg.training.n_epochs + 1):
+        ################################ epoch ################################
         if epoch % cfg.training.log_interval == 0 or epoch == start_epoch:
             average_cpc_loss = average_vq_loss = average_perplexity = 0
             average_accuracies = np.zeros(cfg.training.n_prediction_steps // 2)
 
         for i, (mels, _) in enumerate(tqdm(dataloader), 1):
+            ############################# step ############################
             mels = mels.to(device)
             mels = mels.view(
                 cfg.training.n_speakers_per_batch *
@@ -101,27 +108,31 @@ def train_model(cfg):
             loss.backward()
             optimizer.step()
 
+            # For Logging
             average_cpc_loss += (cpc_loss.item() - average_cpc_loss) / i
             average_vq_loss += (vq_loss.item() - average_vq_loss) / i
             average_perplexity += (perplexity.item() - average_perplexity) / i
             average_accuracies += (np.array(accuracy) - average_accuracies) / i
-
+            ############################ /step ############################
         scheduler.step()
 
+        # Logging
         if epoch % cfg.training.log_interval == 0 and epoch != start_epoch:
+            ## TB
             writer.add_scalar("cpc_loss/train", average_cpc_loss, epoch)
             writer.add_scalar("vq_loss/train", average_vq_loss, epoch)
             writer.add_scalar("perplexity/train", average_perplexity, epoch)
-
+            ## console
             print("epoch:{}, cpc loss:{:.2E}, vq loss:{:.2E}, perpexlity:{:.3f}"
                   .format(epoch, cpc_loss, average_vq_loss, average_perplexity))
             print(100 * average_accuracies)
 
+        # Checkpointing
         if epoch % cfg.training.checkpoint_interval == 0 and epoch != start_epoch:
             save_checkpoint(
                 encoder, cpc, optimizer,
                 scheduler, epoch, checkpoint_dir)
-
+        ############################### /epoch ################################
 
 if __name__ == "__main__":
     train_model()

@@ -11,23 +11,36 @@ import math
 
 class Encoder(nn.Module):
     def __init__(self, in_channels, channels, n_embeddings, z_dim, c_dim):
+        """Encode spectrogram to discrete latent representation.
+        
+        Model: Spec-Conv1d/k4s2-LN-ReLU-[FC-LN-ReLU]x4-FC-VQ + LSTM
+        
+        Args:
+        """
         super(Encoder, self).__init__()
+        # Conv1d/k4s2
         self.conv = nn.Conv1d(in_channels, channels, 4, 2, 1, bias=False)
+        # LN-ReLU-[FC-LN-ReLU]x4-FC
         self.encoder = nn.Sequential(
             nn.LayerNorm(channels),
             nn.ReLU(True),
+            #
             nn.Linear(channels, channels, bias=False),
             nn.LayerNorm(channels),
             nn.ReLU(True),
+            #
             nn.Linear(channels, channels, bias=False),
             nn.LayerNorm(channels),
             nn.ReLU(True),
+            #
             nn.Linear(channels, channels, bias=False),
             nn.LayerNorm(channels),
             nn.ReLU(True),
+            #
             nn.Linear(channels, channels, bias=False),
             nn.LayerNorm(channels),
             nn.ReLU(True),
+            #
             nn.Linear(channels, z_dim),
         )
         self.codebook = VQEmbeddingEMA(n_embeddings, z_dim)

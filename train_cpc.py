@@ -15,6 +15,7 @@ from scheduler import WarmupScheduler
 from model import Encoder, CPCLoss
 
 
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 def save_checkpoint(encoder, cpc, optimizer, scheduler, epoch, checkpoint_dir):
     """Save model and learning states.
     
@@ -32,20 +33,27 @@ def save_checkpoint(encoder, cpc, optimizer, scheduler, epoch, checkpoint_dir):
     checkpoint_path = checkpoint_dir / "model.ckpt-{}.pt".format(epoch)
     torch.save(checkpoint_state, checkpoint_path)
     print("Saved checkpoint: {}".format(checkpoint_path.stem))
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 @hydra.main(config_path="config/train_cpc.yaml")
 def train_model(cfg):
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     tensorboard_path = Path(utils.to_absolute_path("tensorboard")) / cfg.checkpoint_dir
     checkpoint_dir = Path(utils.to_absolute_path(cfg.checkpoint_dir))
     writer = SummaryWriter(tensorboard_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     encoder = Encoder(**cfg.model.encoder)
     cpc = CPCLoss(**cfg.model.cpc)
+
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     encoder.to(device)
     cpc.to(device)
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+    # Adam & (original) WarmupScheduler
     optimizer = optim.Adam(
         chain(encoder.parameters(), cpc.parameters()),
         lr=cfg.training.scheduler.initial_lr)
@@ -57,6 +65,7 @@ def train_model(cfg):
         milestones=cfg.training.scheduler.milestones,
         gamma=cfg.training.scheduler.gamma)
 
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     if cfg.resume:
         print("Resume checkpoint from: {}:".format(cfg.resume))
         resume_path = utils.to_absolute_path(cfg.resume)
@@ -68,7 +77,9 @@ def train_model(cfg):
         start_epoch = checkpoint["epoch"]
     else:
         start_epoch = 1
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+    # Dataset
     root_path = Path(utils.to_absolute_path("datasets")) / cfg.dataset.path
     dataset = CPCDataset(
         root=root_path,
@@ -85,11 +96,13 @@ def train_model(cfg):
         pin_memory=True,
         drop_last=True)
 
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     for epoch in range(start_epoch, cfg.training.n_epochs + 1):
         ################################ epoch ################################
         if epoch % cfg.training.log_interval == 0 or epoch == start_epoch:
             average_cpc_loss = average_vq_loss = average_perplexity = 0
             average_accuracies = np.zeros(cfg.training.n_prediction_steps // 2)
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
         for i, (mels, _) in enumerate(tqdm(dataloader), 1):
             ############################# step ############################
@@ -108,14 +121,19 @@ def train_model(cfg):
             loss.backward()
             optimizer.step()
 
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
             # For Logging
             average_cpc_loss += (cpc_loss.item() - average_cpc_loss) / i
             average_vq_loss += (vq_loss.item() - average_vq_loss) / i
             average_perplexity += (perplexity.item() - average_perplexity) / i
             average_accuracies += (np.array(accuracy) - average_accuracies) / i
             ############################ /step ############################
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        # Count is epoch-based
         scheduler.step()
 
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         # Logging
         if epoch % cfg.training.log_interval == 0 and epoch != start_epoch:
             ## TB
@@ -126,13 +144,15 @@ def train_model(cfg):
             print("epoch:{}, cpc loss:{:.2E}, vq loss:{:.2E}, perpexlity:{:.3f}"
                   .format(epoch, cpc_loss, average_vq_loss, average_perplexity))
             print(100 * average_accuracies)
-
         # Checkpointing
         if epoch % cfg.training.checkpoint_interval == 0 and epoch != start_epoch:
             save_checkpoint(
                 encoder, cpc, optimizer,
                 scheduler, epoch, checkpoint_dir)
         ############################### /epoch ################################
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 if __name__ == "__main__":
     train_model()
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

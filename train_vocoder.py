@@ -14,6 +14,7 @@ from dataset import WavDataset
 from model import Encoder, Vocoder
 
 
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 def save_checkpoint(decoder, optimizer, amp, scheduler, step, checkpoint_dir):
     """Save model and learning states.
     
@@ -30,20 +31,27 @@ def save_checkpoint(decoder, optimizer, amp, scheduler, step, checkpoint_dir):
     checkpoint_path = checkpoint_dir / "model.ckpt-{}.pt".format(step)
     torch.save(checkpoint_state, checkpoint_path)
     print("Saved checkpoint: {}".format(checkpoint_path.stem))
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 @hydra.main(config_path="config/train_vocoder.yaml")
 def train_model(cfg):
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     tensorboard_path = Path(utils.to_absolute_path("tensorboard")) / cfg.checkpoint_dir
     checkpoint_dir = Path(utils.to_absolute_path(cfg.checkpoint_dir))
     writer = SummaryWriter(tensorboard_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     encoder = Encoder(**cfg.model.encoder)
     vocoder = Vocoder(**cfg.model.vocoder)
+
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     encoder.to(device)
     vocoder.to(device)
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+    # Adam, MultiStepLR
     optimizer = optim.Adam(
         vocoder.parameters(),
         lr=cfg.training.optimizer.lr)
@@ -52,6 +60,7 @@ def train_model(cfg):
         optimizer, milestones=cfg.training.scheduler.milestones,
         gamma=cfg.training.scheduler.gamma)
 
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     if cfg.resume:
         print("Resume checkpoint from: {}:".format(cfg.resume))
         resume_path = utils.to_absolute_path(cfg.resume)
@@ -63,13 +72,17 @@ def train_model(cfg):
         global_step = checkpoint["step"]
     else:
         global_step = 0
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+    # If encoder is used in preprocessing for vocoder, this move to other files.
     print("Resume cpc encoder from: {}:".format(cfg.cpc_checkpoint))
     encoder_path = utils.to_absolute_path(cfg.cpc_checkpoint)
     checkpoint = torch.load(encoder_path, map_location=lambda storage, loc: storage)
     encoder.load_state_dict(checkpoint["encoder"])
     encoder.eval()
+    # /
 
+    # Dataset preparation
     root_path = Path(utils.to_absolute_path("datasets")) / cfg.dataset.path
     dataset = WavDataset(
         root=root_path,
@@ -85,12 +98,16 @@ def train_model(cfg):
         pin_memory=True,
         drop_last=True)
 
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     n_epochs = cfg.training.n_steps // len(dataloader) + 1
     start_epoch = global_step // len(dataloader) + 1
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     for epoch in range(start_epoch, n_epochs + 1):
         ################################ epoch ################################
         average_loss = 0
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
         for i, (audio, mels, speakers) in enumerate(tqdm(dataloader), 1):
             ############################# step ############################
@@ -98,22 +115,29 @@ def train_model(cfg):
 
             optimizer.zero_grad()
 
+            # This could be done in preprocessing for Vocoder. Isn't it?
             with torch.no_grad():
                 _, _, indices = encoder.encode(mels)
+            # /
+
+            # Vocoding -> CE loss
             output = vocoder(audio[:, :-1], indices, speakers)
             loss = F.cross_entropy(output.transpose(1, 2), audio[:, 1:])
 
+            # Backward
             with amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
 
+            # Gradient clipping
             torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), 1)
+
+            # Optimize
             optimizer.step()
             scheduler.step()
 
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
             average_loss += (loss.item() - average_loss) / i
-
             global_step += 1
-
             # Checkpointing
             #   global step based, not epoch based
             if global_step % cfg.training.checkpoint_interval == 0:
@@ -124,6 +148,7 @@ def train_model(cfg):
         writer.add_scalar("loss/train", average_loss, global_step)
         print("epoch:{}, loss:{:.3E}".format(epoch, average_loss))
         ############################### /epoch ################################
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 if __name__ == "__main__":
     train_model()

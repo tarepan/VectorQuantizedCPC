@@ -11,6 +11,7 @@ from functools import partial
 from tqdm import tqdm
 from dataclasses import dataclass
 
+# We could use librosa's preemphasis: [librosa.effects.preemphasis](https://librosa.org/doc/main/generated/librosa.effects.preemphasis.html)
 def preemphasis(x, preemph):
     return scipy.signal.lfilter([1, -preemph], [1], x)
 
@@ -29,10 +30,29 @@ def mulaw_decode(y, mu):
 
 def process_wav(wav_path, out_path, sr=160000, preemph=0.97, n_fft=2048, n_mels=80, hop_length=160,
                 win_length=400, fmin=50, top_db=80, bits=8, offset=0.0, duration=None):
+    """
+    Args:
+        wav_path: Path of target waveform without `.wav` suffix
+        out_path: Path of output file without suffix, used for several outputs
+        sr=160000
+        preemph=0.97
+        n_fft=2048
+        n_mels=80
+        hop_length=160
+        win_length=400
+        fmin=50
+        top_db=80
+        bits=8
+        offset=0.0: Audio load offset, used only by `librosa.load`
+        duration=None: Audio load duration, used only by `librosa.load`
+    """
+    # Load uttered part of a .wav file
     wav, _ = librosa.load(wav_path.with_suffix(".wav"), sr=sr,
                           offset=offset, duration=duration)
+    # Scale adjustment: [?, ?] -> (-1, +1)
     wav = wav / np.abs(wav).max() * 0.999
 
+    # Preemphasis -> melspectrogram -> log-mel spec -> ? -> μ-law
     mel = librosa.feature.melspectrogram(preemphasis(wav, preemph),
                                          sr=sr,
                                          n_fft=n_fft,
@@ -46,8 +66,14 @@ def process_wav(wav_path, out_path, sr=160000, preemph=0.97, n_fft=2048, n_mels=
 
     wav = mulaw_encode(wav, mu=2**bits)
 
+    # Output:
+    # xxxx/
+    #   name_of_wave.wav.npy (wav)
+    #   name_of_wave.mel.npy (logmel)
     np.save(out_path.with_suffix(".wav.npy"), wav)
     np.save(out_path.with_suffix(".mel.npy"), logmel)
+
+    # Returns used for reporting
     return out_path, logmel.shape[-1]
 
 
@@ -69,17 +95,24 @@ def preprocess_dataset(cfg):
     conf_preprocessing = ConfPreprocessing()
 
     in_dir = Path(utils.to_absolute_path(cfg.in_dir))
+    # datasets/2019
     out_dir = Path(utils.to_absolute_path("datasets")) / str(cfg.dataset.dataset)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     executor = ProcessPoolExecutor(max_workers=cpu_count())
     for split in ["train", "test"]:
-        print("Extracting features for {} set".format(split))
         futures = []
+        # datasets/2019/english/{"train"|"test"}
         split_path = out_dir / cfg.dataset.language / split
         with open(split_path.with_suffix(".json")) as file:
             metadata = json.load(file)
             for in_path, start, duration, out_path in metadata:
+                # in_path
+                # start: Used only as `offset` in `preprocess_wav`
+                # duration: Used only as `duration` in `preprocess_wav`
+                # out_path
+
+                # Specify pathes from dataset path and matadata
                 wav_path = in_dir / in_path
                 out_path = out_dir / out_path
                 out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -89,12 +122,7 @@ def preprocess_dataset(cfg):
 
         results = [future.result() for future in tqdm(futures)]
 
-        lengths = [x[-1] for x in results]
-        frames = sum(lengths)
-        frame_shift_ms = conf_preprocessing.hop_length / conf_preprocessing.sr
-        hours = frames * frame_shift_ms / 3600
-        print("Wrote {} utterances, {} frames ({:.2f} hours)".format(len(lengths), frames, hours))
-
+        print(f"{split} preprocessed.")
 
 if __name__ == "__main__":
     preprocess_dataset()

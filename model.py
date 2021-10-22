@@ -47,6 +47,11 @@ class Encoder(nn.Module):
         self.rnn = nn.LSTM(z_dim, c_dim, batch_first=True)
 
     def encode(self, mel):
+        """Encode spectrogram.
+
+        Returns:
+            (z, c, indices): latent vector series, context vector series, latent index series
+        """
         z = self.conv(mel)
         z = self.encoder(z.transpose(1, 2))
         z, indices = self.codebook.encode(z)
@@ -234,54 +239,78 @@ class Vocoder(nn.Module):
     def __init__(self, in_channels, n_speakers, speaker_embedding_dim,
                  conditioning_channels, mu_embedding_dim, rnn_channels,
                  fc_channels, bits, hop_length):
+        """
+        Args:
+            in_channels: Dimension of latent vector z (NOT codebook size)
+            n_speakers: Number of speakers
+            speaker_embedding_dim: Dimension of speaker embedding
+            conditioning_channels: Dimension of PreNet hidden layer
+            mu_embedding_dim: Dimension of sample embedding
+            rnn_channels: Dimension of AR-RNN hidden/output
+            fc_channels: Dimension of FC hidden layer
+            bits: Depth of quantized bit
+            hop_length:
+        """
         super(Vocoder, self).__init__()
         self.rnn_channels = rnn_channels
         self.quantization_channels = 2**bits
         self.hop_length = hop_length
 
+        # Discrete code embedding: 512 discrete codes => continuous 64-dim space
         self.code_embedding = nn.Embedding(512, 64)
+        # Speaker embedding for PreNet
         self.speaker_embedding = nn.Embedding(n_speakers, speaker_embedding_dim)
+
+        # PreNet: 2layer bidirection GRU with latent **and speaker embedding**
         self.rnn1 = nn.GRU(in_channels + speaker_embedding_dim, conditioning_channels,
                            num_layers=2, batch_first=True, bidirectional=True)
+        # Sample embedding for AR
         self.mu_embedding = nn.Embedding(self.quantization_channels, mu_embedding_dim)
+        # AR-RNN: AR embedding + latent (bidi output) => hidden/output `rnn_channels`
         self.rnn2 = nn.GRU(mu_embedding_dim + 2*conditioning_channels, rnn_channels, batch_first=True)
-        self.fc1 = nn.Linear(rnn_channels, fc_channels)
-        self.fc2 = nn.Linear(fc_channels, self.quantization_channels)
+        # FC: AR hidden/output => FC hidden `fc_channels` => bit energy `self.quantization_channels`
+        self.fc = nn.Sequential([
+            nn.Linear(rnn_channels, fc_channels),
+            nn.ReLU(),
+            nn.Linear(fc_channels, self.quantization_channels),
+        ])
 
     def forward(self, x, z, speakers):
         """Forward a content representation sequence at once with teacher observation sequence for AR.
         
         Args:
             x : μ-law encoded observation sequence for AR teacher signal
-            z : Content representation sequence for conditioning
+            z : Index series of discrete content representation for conditioning
             speakers :
         
         Returns:
             Energy distribution of `bits` bit μ-law value
         """
         
-        # PreNet for content and speaker representations
-        ## Content embedding and upsampling
+        # Content embedding and upsampling
         z = self.code_embedding(z)
         z = F.interpolate(z.transpose(1, 2), scale_factor=2)
         z = z.transpose(1, 2)
-        ## Speaker embedding and upsampling
+        # Speaker embedding and upsampling
         speakers = self.speaker_embedding(speakers)
         speakers = speakers.unsqueeze(1).expand(-1, z.size(1), -1)
-        ## Bidirectional GRU PreNet
-        z, _ = self.rnn1(torch.cat((z, speakers), dim=-1))
+        latent_series = torch.cat((z, speakers), dim=-1)
+
+        # PreNet
+        z, _ = self.rnn1(latent_series)
         z = F.interpolate(z.transpose(1, 2), scale_factor=self.hop_length)
-        z = z.transpose(1, 2)
+        conditioning = z.transpose(1, 2)
 
         # WaveRNN
-        x, _ = self.rnn2(torch.cat((self.mu_embedding(x), z), dim=2))
-        x = self.fc2(F.relu(self.fc1(x)))
+        x, _ = self.rnn2(torch.cat((self.mu_embedding(x), conditioning), dim=2))
+        x = self.fc(x)
         return x
 
     def generate(self, z, speaker):
         output = []
         cell = get_gru_cell(self.rnn2)
 
+        # Embed & Upsample latent
         z = self.code_embedding(z)
         z = F.interpolate(z.transpose(1, 2), scale_factor=2)
         z = z.transpose(1, 2)
@@ -290,24 +319,25 @@ class Vocoder(nn.Module):
         speaker = speaker.unsqueeze(1).expand(-1, z.size(1), -1)
 
         z = torch.cat((z, speaker), dim=-1)
-        z, _ = self.rnn1(z)
 
+        # PreNet
+        z, _ = self.rnn1(z)
         z = F.interpolate(z.transpose(1, 2), scale_factor=self.hop_length)
         z = z.transpose(1, 2)
 
+        # Sample AR
         batch_size, sample_size, _ = z.size()
-
         h = torch.zeros(batch_size, self.rnn_channels, device=z.device)
         x = torch.zeros(batch_size, device=z.device).fill_(self.quantization_channels // 2).long()
-
         for m in tqdm(torch.unbind(z, dim=1), leave=False):
             x = self.mu_embedding(x)
             h = cell(torch.cat((x, m), dim=1), h)
-            logits = self.fc2(F.relu(self.fc1(h)))
+            logits = self.fc(h)
             dist = Categorical(logits=logits)
             x = dist.sample()
             output.append(2 * x.float().item() / (self.quantization_channels - 1.) - 1.)
 
+        # Linear PMC
         output = np.asarray(output, dtype=np.float64)
         output = mulaw_decode(output, self.quantization_channels)
         return output

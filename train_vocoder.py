@@ -108,6 +108,8 @@ def train_model(cfg):
 
         for i, (audio, mels, speakers) in enumerate(tqdm(dataloader), 1):
             ############################# step ############################
+            # tqdm report 'step' number in progress bar
+
             # Setup
             audio, mels, speakers = audio.to(device), mels.to(device), speakers.to(device)
             optimizer.zero_grad()

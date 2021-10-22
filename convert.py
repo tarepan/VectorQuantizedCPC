@@ -79,6 +79,7 @@ def convert(cfg):
         output_loudness = meter.integrated_loudness(output)
         output = pyloudnorm.normalize.loudness(output, output_loudness, ref_loudness)
         path = out_dir / out_filename
+        # [todo]: .write_wav was deprecated.
         librosa.output.write_wav(path.with_suffix(".wav"), output.astype(np.float32), sr=cfg.preprocessing.sr)
 
 

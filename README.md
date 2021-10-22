@@ -30,9 +30,11 @@ This work is based on *CPC* and *original VQ-VAE*.
 - [Original repo's samples](https://bshall.github.io/VectorQuantizedCPC/)
 
 ## How to Use
-<!-- ### Quick training <- omit in toc ->
-Jump to **[Notebook in Google Colaboratory][notebook]**, then Run. that's all!!  
- -->
+### Quick training
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)][notebook]  
+Jump to above link, then Run. That's all!  
+
+### Pretrained models
 Pretrained weights for the 2019 English and Indonesian datasets can be found [here](https://github.com/bshall/VectorQuantizedCPC/releases/tag/v0.1).
 
 ### Requirements
@@ -144,7 +146,7 @@ Eprint = {arXiv:2005.09409},
 ```
 
 [paper]:https://arxiv.org/abs/2005.09409
-<!-- [notebook]:https://colab.research.google.com/github/tarepan/Scyclone-PyTorch/blob/main/Scyclone_PyTorch.ipynb -->
+[notebook]:https://colab.research.google.com/github/tarepan/VectorQuantizedCPC/blob/master/VQ_CPC_training.ipynb
 
 ## Contact
 Please check [original repository](https://github.com/bshall/VectorQuantizedCPC).  

@@ -9,7 +9,7 @@ from multiprocessing import cpu_count
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from tqdm import tqdm
-
+from dataclasses import dataclass
 
 def preemphasis(x, preemph):
     return scipy.signal.lfilter([1, -preemph], [1], x)
@@ -51,8 +51,23 @@ def process_wav(wav_path, out_path, sr=160000, preemph=0.97, n_fft=2048, n_mels=
     return out_path, logmel.shape[-1]
 
 
+@dataclass
+class ConfPreprocessing:
+    """Configuration of preprocessing.
+    """
+    sr: int = 16000
+    n_fft: int = 2048
+    n_mels: int = 80
+    fmin: int = 50
+    preemph: int = 0.97
+    top_db: int = 80
+    hop_length: int = 160
+    win_length: int = 400
+    bits: int = 8
 @hydra.main(config_path="config/preprocessing.yaml")
 def preprocess_dataset(cfg):
+    conf_preprocessing = ConfPreprocessing()
+
     in_dir = Path(utils.to_absolute_path(cfg.in_dir))
     out_dir = Path(utils.to_absolute_path("datasets")) / str(cfg.dataset.dataset)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -76,7 +91,7 @@ def preprocess_dataset(cfg):
 
         lengths = [x[-1] for x in results]
         frames = sum(lengths)
-        frame_shift_ms = cfg.preprocessing.hop_length / cfg.preprocessing.sr
+        frame_shift_ms = conf_preprocessing.hop_length / conf_preprocessing.sr
         hours = frames * frame_shift_ms / 3600
         print("Wrote {} utterances, {} frames ({:.2f} hours)".format(len(lengths), frames, hours))
 

@@ -71,7 +71,7 @@ Train VQ-CPC model, then train Vocoder model.
 Pre-trained weight of both models are [here](https://github.com/bshall/VectorQuantizedCPC/releases/tag/v0.1).
 
 #### Training Speed <!-- omit in toc -->
-Vocoder: 0.84 [iter/sec] @ NVIDIA ??? Google Colaboratory (AMP-) == 2.2 days/160000steps  
+Vocoder: 0.84 [iter/sec] @ NVIDIA  Google Colaboratory (AMP-) == 2.2 days/160000steps  
 
 #### VQ-CPC
 ```

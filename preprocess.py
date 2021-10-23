@@ -41,7 +41,6 @@ class ConfPreprocessing:
     win_length: int = MISSING
     bits: int = MISSING
 
-
 def process_wav(wav: np.ndarray, conf: ConfPreprocessing) -> (np.ndarray, np.ndarray):
     """
     Args:
@@ -82,9 +81,8 @@ def preprocess_dataset(cfg: ConfGlobal):
         # `train.json` | `test.json`
         with open(split_path.with_suffix(".json")) as file:
             metadata = json.load(file)
-            for in_path, start, duration, out_path in metadata:
+            for in_path, _, duration, out_path in metadata:
                 # in_path
-                # start: (maybe) volume>0 start time - BUT ALL DATA IS START=0
                 # duration: (maybe) effective duration
                 # out_path
 
@@ -92,8 +90,7 @@ def preprocess_dataset(cfg: ConfGlobal):
                 # zerospeech/2019/{in_path}
                 # e.g. wav_path = "zerospeech/2019/english/train/unit/S015_0361841101"
                 wav_path = in_dir / in_path
-                wav, _ = librosa.load(wav_path.with_suffix(".wav"), sr=conf.preprocessing.sr,
-                                    offset=start, duration=duration)
+                wav, _ = librosa.load(wav_path.with_suffix(".wav"), sr=conf.preprocessing.sr, duration=duration)
                 mu_law, spec = process_wav(wav, cfg.preprocessing)
                 # Output:
                 # datasets/2019/{out_path}

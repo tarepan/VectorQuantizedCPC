@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import hydra
 from hydra import utils
 from tqdm import tqdm
 import torch
@@ -11,6 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from dataset import WavDataset
 from model import Encoder, Vocoder
+from config import load_conf, ConfGlobal
 
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -33,8 +33,7 @@ def save_checkpoint(decoder, optimizer, scheduler, step, checkpoint_dir):
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
-@hydra.main(config_path="config/train_vocoder.yaml")
-def train_model(cfg):
+def train_model(cfg: ConfGlobal):
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     tensorboard_path = Path(utils.to_absolute_path("tensorboard")) / cfg.checkpoint_dir
     checkpoint_dir = Path(utils.to_absolute_path(cfg.checkpoint_dir))
@@ -145,4 +144,5 @@ def train_model(cfg):
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 if __name__ == "__main__":
-    train_model()
+    conf = load_conf()
+    train_model(conf)

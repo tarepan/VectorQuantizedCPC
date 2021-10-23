@@ -11,10 +11,10 @@ import pyloudnorm
 
 from preprocess import preemphasis
 from model import Encoder, Vocoder
+from config import load_conf, ConfGlobal
 
 
-@hydra.main(config_path="config/convert.yaml")
-def convert(cfg):
+def convert(cfg: ConfGlobal):
     dataset_path = Path(utils.to_absolute_path("datasets")) / cfg.dataset.path
     with open(dataset_path / "speakers.json") as file:
         speakers = sorted(json.load(file))
@@ -84,4 +84,5 @@ def convert(cfg):
 
 
 if __name__ == "__main__":
-    convert()
+    conf = load_conf()
+    convert(conf)

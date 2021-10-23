@@ -276,11 +276,11 @@ class Vocoder(nn.Module):
         # AR-RNN: AR embedding + latent (bidi output) => hidden/output `rnn_channels`
         self.rnn2 = nn.GRU(mu_embedding_dim + dim_o_conditioning, rnn_channels, batch_first=True)
         # FC: AR hidden/output => FC hidden `fc_channels` => bit energy `self.quantization_channels`
-        self.fc = nn.Sequential([
+        self.fc = nn.Sequential(
             nn.Linear(rnn_channels, fc_channels),
             nn.ReLU(),
             nn.Linear(fc_channels, self.quantization_channels),
-        ])
+        )
 
     def forward(self, x, z, speakers):
         """Forward a content representation sequence at once with teacher observation sequence for AR.

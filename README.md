@@ -52,6 +52,7 @@ pip install -r requirements.txt
 
 2.  Download the train/test splits [here](https://github.com/bshall/VectorQuantizedCPC/releases/tag/v0.1) 
     and extract in the root directory of the repo.
+    Train data is ZR19/Development/unit (9474 utterances)  
     
 3.  Preprocess audio and extract train/test log-Mel spectrograms:
     ```
@@ -65,7 +66,8 @@ pip install -r requirements.txt
     ```
     python preprocess.py in_dir=../datasets/2020/2019 dataset=2019/english
     ```
-    
+
+
 ### Training
 Train VQ-CPC model, then train Vocoder model.  
 Pre-trained weight of both models are [here](https://github.com/bshall/VectorQuantizedCPC/releases/tag/v0.1).

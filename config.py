@@ -38,6 +38,7 @@ model:
         fc_channels: 256
         bits: ${preprocessing.bits}
         hop_length: ${preprocessing.hop_length}
+        bidirectional: true
 training:
     cpc:
         sample_frames: 128

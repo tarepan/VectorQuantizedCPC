@@ -3,6 +3,7 @@ from pathlib import Path
 import hydra
 from hydra import utils
 from tqdm import tqdm
+import soundfile
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
@@ -86,6 +87,11 @@ def train_model(cfg):
         hop_length=cfg.preprocessing.hop_length,
         sr=cfg.preprocessing.sr,
         sample_frames=cfg.training.sample_frames)
+    dataset_val = WavDataset(
+        root=root_path,
+        hop_length=cfg.preprocessing.hop_length,
+        sr=cfg.preprocessing.sr,
+        sample_frames=None)
 
     dataloader = DataLoader(
         dataset,
@@ -94,6 +100,13 @@ def train_model(cfg):
         num_workers=cfg.training.n_workers,
         pin_memory=True,
         drop_last=True)
+    dataloader_val = DataLoader(
+        dataset_val,
+        batch_size=1,
+        shuffle=False)
+
+    dir_sample = Path("./out_sample")
+    dir_sample.mkdir(parents=True, exist_ok=True)
 
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     n_epochs = cfg.training.n_steps // len(dataloader) + 1
@@ -141,6 +154,19 @@ def train_model(cfg):
         # Logging
         writer.add_scalar("loss/train", average_loss, global_step)
         print("epoch:{}, loss:{:.3E}".format(epoch, average_loss))
+        # Sample generation
+        # Difference mel-spec length, so batch_size=1
+        #   5 min/epoch in P100
+        if epoch % 12 == 0:
+            dl_v = iter(dataloader_val)
+            for i in range(0, 3):
+                _, mels, speakers = next(dl_v)
+                mels, speakers = mels.to(device), speakers.to(device)
+                with torch.no_grad():
+                    _, _, indices = encoder.encode(mels)
+                    # output::float
+                    output = vocoder.generate(indices, speakers)
+                soundfile.write(f"{str(dir_sample)}/No{i}_step{global_step}.wav", output[0], cfg.preprocessing.sr)
         ############################### /epoch ################################
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

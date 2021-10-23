@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 import json
 import random
 
@@ -55,7 +55,7 @@ class CPCDataset(Dataset):
 
 
 class WavDataset(Dataset):
-    def __init__(self, root: str, hop_length: int, sr: int, sample_frames: int):
+    def __init__(self, root: str, hop_length: int, sr: int, sample_frames: Optional[int]):
         """
         Args:
             root:
@@ -65,7 +65,8 @@ class WavDataset(Dataset):
         """
         self.root = Path(root)
         self.hop_length = hop_length
-        self.sample_frames = sample_frames
+        self.sample_frames = sample_frames if sample_frames is not None else 0
+        self.clip = True if sample_frames is not None else False
 
         # Speaker list
         with open(self.root / "speakers.json") as file:
@@ -73,7 +74,7 @@ class WavDataset(Dataset):
 
         # Selected datum path list based on utterance duration in metadata json
         # Duration [sec]
-        min_duration = (sample_frames + 2) * hop_length / sr
+        min_duration = (self.sample_frames + 2) * hop_length / sr
         with open(self.root / "train.json") as file:
             metadata = json.load(file)
             # self.metadata: Relative path of a compatible-length utterance
@@ -98,11 +99,14 @@ class WavDataset(Dataset):
         audio = np.load(path.with_suffix(".wav.npy"))
         mel = np.load(path.with_suffix(".mel.npy"))
 
-        # Clip with fixed length
-        pos = random.randint(0, mel.shape[-1] - self.sample_frames - 2)
-        mel = mel[:, pos:pos + self.sample_frames]
-        audio = audio[pos * self.hop_length:(pos + self.sample_frames) * self.hop_length + 1]
-
+        if self.clip:
+            # Clip with fixed length
+            pos = random.randint(0, mel.shape[-1] - self.sample_frames - 2)
+            mel = mel[:, pos:pos + self.sample_frames]
+            audio = audio[pos * self.hop_length:(pos + self.sample_frames) * self.hop_length + 1]
+        else:
+            # No clipping
+            pass
         # Infer speaker index from path
         # `Path.parts` is list of directory.
         # "english/train/S015/S015_0361841101" => (.parts[-2]) => "S015" => (list.index()) => 0

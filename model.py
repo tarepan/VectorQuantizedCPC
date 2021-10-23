@@ -314,6 +314,9 @@ class Vocoder(nn.Module):
         return x
 
     def generate(self, z, speaker):
+        """Generate utterances from a batch of (latent_code, speaker_index)
+        """
+
         output = []
         cell = get_gru_cell(self.rnn2)
 

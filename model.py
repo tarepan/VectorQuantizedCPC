@@ -237,8 +237,8 @@ class Vocoder(nn.Module):
     Model is bidirectional_PreNet + WaveRNN (=RNN_MS).
     """
     def __init__(self, in_channels, n_speakers, speaker_embedding_dim,
-                 conditioning_channels, mu_embedding_dim, rnn_channels,
-                 fc_channels, bits, hop_length):
+                 conditioning_channels: int, mu_embedding_dim: int, rnn_channels,
+                 fc_channels, bits, hop_length, bidirectional: bool):
         """
         Args:
             in_channels: Dimension of latent vector z (NOT codebook size)
@@ -256,18 +256,25 @@ class Vocoder(nn.Module):
         self.quantization_channels = 2**bits
         self.hop_length = hop_length
 
+        # Harmonized with tarepan/UniversalVocoding
+        layer = 2
+        dim_o_conditioning = 2*conditioning_channels
+        dim_h_prenet = conditioning_channels if bidirectional else (2 * conditioning_channels)
+        bi, uni = "bidirectional", "unidirectional"
+        print(f"PreNet: {layer}-layer { bi if bidirectional else uni } GRU")
+
         # Discrete code embedding: 512 discrete codes => continuous 64-dim space
         self.code_embedding = nn.Embedding(512, 64)
         # Speaker embedding for PreNet
         self.speaker_embedding = nn.Embedding(n_speakers, speaker_embedding_dim)
 
         # PreNet: 2layer bidirection GRU with latent **and speaker embedding**
-        self.rnn1 = nn.GRU(in_channels + speaker_embedding_dim, conditioning_channels,
-                           num_layers=2, batch_first=True, bidirectional=True)
+        self.rnn1 = nn.GRU(in_channels + speaker_embedding_dim, dim_h_prenet,
+                           num_layers=layer, batch_first=True, bidirectional=bidirectional)
         # Sample embedding for AR
         self.mu_embedding = nn.Embedding(self.quantization_channels, mu_embedding_dim)
         # AR-RNN: AR embedding + latent (bidi output) => hidden/output `rnn_channels`
-        self.rnn2 = nn.GRU(mu_embedding_dim + 2*conditioning_channels, rnn_channels, batch_first=True)
+        self.rnn2 = nn.GRU(mu_embedding_dim + dim_o_conditioning, rnn_channels, batch_first=True)
         # FC: AR hidden/output => FC hidden `fc_channels` => bit energy `self.quantization_channels`
         self.fc = nn.Sequential([
             nn.Linear(rnn_channels, fc_channels),

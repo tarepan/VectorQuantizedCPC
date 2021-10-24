@@ -86,7 +86,7 @@ class ZR19MulawMelSpkDataset(Dataset[Datum_ZR19]):
         # Selection based on audio length
         self._ids: List[ItemIdZR19] = [
             item_id for item_id in self._corpus.get_identities()
-            if len(librosa.load(self._corpus.get_item_path(item_id), sr=conf.sr)[0])
+            if len(librosa.load(self._corpus.get_item_path(item_id), sr=conf.preprocess.sr)[0])
             >
             (conf.clip_length_mel + 2) * conf.mel_stft_stride
         ]

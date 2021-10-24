@@ -27,7 +27,7 @@ x2 are Development(en)/Surprise(id), 4 are below.
 
 # Subtype = Literal["train/parallel/source", "train/parallel/voice", "train/unit", "train/voice", "test"] # >=Python3.8
 Subtype = str
-subtypes = ["train/parallel/source", "train/parallel/voice", "train/unit", "train/voice", "test"]
+subtypes = ["train-parallel-source", "train-parallel-voice", "train-unit", "train-voice", "test"]
 Speaker = str
 
 class ItemIdZR19(NamedTuple):
@@ -38,7 +38,11 @@ class ItemIdZR19(NamedTuple):
         speaker: Speaker ID
         serial_num: Utterance Number string
     """
-
+    # Design Note: Audio Length
+    #   ItemId do not contain audio length intentionally.
+    #   'Effective' length differ in situation by situation.
+    #   For example, native file length, non-zero length,
+    #     dB-based length, Voice Activity region, etc...
     subtype: Subtype
     speaker: Speaker
     utterance_name: str
@@ -131,9 +135,9 @@ class ZR19(AbstractCorpus[ItemIdZR19]):
 
         ids: List[ItemIdZR19] = []
         for item in utterances_unit:
-                ids.append(ItemIdZR19("train/unit", item[0:4], item))
+                ids.append(ItemIdZR19("train-unit", item[0:4], item))
         for item in utterances_voice:
-                ids.append(ItemIdZR19("train/voice", item[0:4], item))
+                ids.append(ItemIdZR19("train-voice", item[0:4], item))
         return ids
 
     def get_item_path(self, id: ItemIdZR19) -> Path:
@@ -160,9 +164,8 @@ class ZR19(AbstractCorpus[ItemIdZR19]):
         Returns:
             Path of the specified item.
         """
-
         root = self._path_contents
-        return root / self._corpus_name / Path(id.subtype) / f"{id.utterance_name}.wav"
+        return root / self._corpus_name / Path(id.subtype.replace('-', '/')) / f"{id.utterance_name}.wav"
 
 
 def forward_from_general(adress_from: str, forward_to: str) -> None:

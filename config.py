@@ -3,25 +3,26 @@ from dataclasses import dataclass
 
 from omegaconf import OmegaConf, SCMode, MISSING
 
-from preprocess import ConfPreprocessing
+from dataset_zr19 import ConfDataset
 
 
 CONF_DEFAULT_STR = """
 dataset:
-    dataset: 2019
-    language: english
-    path: 2019/english
-    n_speakers: 102
-preprocessing:
-    sr: 16000
-    n_fft: 2048
-    n_mels: 80
-    fmin: 50
-    preemph: 0.97
-    top_db: 80
-    hop_length: 160
-    win_length: 400
-    bits: 8
+    adress_data_root: null
+    clip_length_mel: ${training.vocoder.sample_frames}
+    mel_stft_stride: 160
+    corpus:
+        download: false
+    preprocess:
+        sr: 16000
+        n_fft: 2048
+        n_mels: 80
+        fmin: 50
+        preemph: 0.97
+        top_db: 80
+        # hop_length: local sync
+        win_length: 400
+        bits: 8
 model:
     encoder:
         in_channels: ${preprocessing.n_mels}
@@ -91,13 +92,6 @@ synthesis_list: ./target_vc.json
 
 
 @dataclass
-class ConfDataset:
-    dataset: str = MISSING
-    language: str = MISSING
-    path: str = MISSING
-    n_speakers: int = MISSING
-
-@dataclass
 class ConfGlobal:
     """Configuration of everything.
     Args:
@@ -118,7 +112,6 @@ class ConfGlobal:
     in_dir: str = MISSING
     out_dir: str = MISSING
     synthesis_list: str = MISSING
-    preprocessing: ConfPreprocessing = ConfPreprocessing()
     dataset: ConfDataset = ConfDataset()
 
 

@@ -1,14 +1,12 @@
 from pathlib import Path
 
-from hydra import utils
 from tqdm import tqdm
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 
-from dataset import WavDataset
+from dataset_zr19 import ZR19MulawMelSpkDataset
 from model import Encoder, Vocoder
 from config import load_conf, ConfGlobal
 
@@ -33,16 +31,14 @@ def save_checkpoint(decoder, optimizer, scheduler, step, checkpoint_dir):
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
-def train_model(cfg: ConfGlobal):
+def train_model(conf: ConfGlobal):
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    tensorboard_path = Path(utils.to_absolute_path("tensorboard")) / cfg.checkpoint_dir
-    checkpoint_dir = Path(utils.to_absolute_path(cfg.checkpoint_dir))
-    writer = SummaryWriter(tensorboard_path)
+    checkpoint_dir = Path(conf.checkpoint_dir)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    encoder = Encoder(**cfg.model.encoder)
-    vocoder = Vocoder(**cfg.model.vocoder)
+    encoder = Encoder(conf.model.encoder)
+    vocoder = Vocoder(conf.model.vocoder)
 
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     encoder.to(device)
@@ -52,50 +48,43 @@ def train_model(cfg: ConfGlobal):
     # Adam, MultiStepLR
     optimizer = optim.Adam(
         vocoder.parameters(),
-        lr=cfg.training.optimizer.lr)
+        lr=conf.training.vocoder.optimizer_lr)
     scheduler = optim.lr_scheduler.MultiStepLR(
-        optimizer, milestones=cfg.training.scheduler.milestones,
-        gamma=cfg.training.scheduler.gamma)
+        optimizer, milestones=conf.training.vocoder.scheduler_milestones,
+        gamma=conf.training.vocoder.scheduler_gamma)
 
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    if cfg.resume:
-        print("Resume checkpoint from: {}:".format(cfg.resume))
-        resume_path = utils.to_absolute_path(cfg.resume)
-        checkpoint = torch.load(resume_path, map_location=lambda storage, loc: storage)
+    if conf.resume:
+        print("Resume checkpoint from: {}:".format(conf.resume))
+        checkpoint = torch.load(conf.resume, map_location=lambda storage, _: storage)
         vocoder.load_state_dict(checkpoint["vocoder"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         scheduler.load_state_dict(checkpoint["scheduler"])
-        global_step = checkpoint["step"]
+        global_step: int = checkpoint["step"]
     else:
-        global_step = 0
+        global_step: int = 0
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     # If encoder is used in preprocessing for vocoder, this move to other files.
-    print("Resume cpc encoder from: {}:".format(cfg.cpc_checkpoint))
-    encoder_path = utils.to_absolute_path(cfg.cpc_checkpoint)
-    checkpoint = torch.load(encoder_path, map_location=lambda storage, loc: storage)
+    print("Resume cpc encoder from: {}:".format(conf.cpc_checkpoint))
+    checkpoint = torch.load(conf.cpc_checkpoint, map_location=lambda storage, _: storage)
     encoder.load_state_dict(checkpoint["encoder"])
     encoder.eval()
     # /
 
     # Dataset preparation
-    root_path = Path(utils.to_absolute_path("datasets")) / cfg.dataset.path
-    dataset = WavDataset(
-        root=root_path,
-        hop_length=cfg.preprocessing.hop_length,
-        sr=cfg.preprocessing.sr,
-        sample_frames=cfg.training.sample_frames)
-
+    dataset = ZR19MulawMelSpkDataset(True, conf.dataset)
     dataloader = DataLoader(
         dataset,
-        batch_size=cfg.training.batch_size,
+        batch_size=conf.training.vocoder.batch_size,
         shuffle=True,
-        num_workers=cfg.training.n_workers,
+        num_workers=conf.training.vocoder.n_workers,
         pin_memory=True,
-        drop_last=True)
+        drop_last=True
+    )
 
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    n_epochs = cfg.training.n_steps // len(dataloader) + 1
+    n_epochs = conf.training.vocoder.n_steps // len(dataloader) + 1
     start_epoch = global_step // len(dataloader) + 1
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -133,12 +122,11 @@ def train_model(cfg: ConfGlobal):
             global_step += 1
             # Checkpointing
             #   global step based, not epoch based
-            if global_step % cfg.training.checkpoint_interval == 0:
+            if global_step % conf.training.vocoder.checkpoint_interval == 0:
                 save_checkpoint(
                     vocoder, optimizer, scheduler, global_step, checkpoint_dir)
             ############################# step ############################
         # Logging
-        writer.add_scalar("loss/train", average_loss, global_step)
         print("epoch:{}, loss:{:.3E}".format(epoch, average_loss))
         ############################### /epoch ################################
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

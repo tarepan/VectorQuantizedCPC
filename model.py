@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from omegaconf.omegaconf import MISSING
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -9,8 +11,24 @@ from preprocess import mulaw_decode
 import math
 
 
+@dataclass
+class ConfEncoder:
+    """
+    Args:
+        in_channels
+        channels
+        n_embeddings
+        z_dim
+        c_dim
+    """
+    in_channels: int = MISSING
+    channels: int = MISSING
+    n_embeddings: int = MISSING
+    z_dim: int = MISSING
+    c_dim: int = MISSING
+
 class Encoder(nn.Module):
-    def __init__(self, in_channels, channels, n_embeddings, z_dim, c_dim):
+    def __init__(self, conf: ConfEncoder):
         """Encode spectrogram to discrete latent representation.
         
         Model: Spec-Conv1d/k4s2-LN-ReLU-[FC-LN-ReLU]x4-FC-VQ + LSTM
@@ -19,32 +37,32 @@ class Encoder(nn.Module):
         """
         super(Encoder, self).__init__()
         # Conv1d/k4s2
-        self.conv = nn.Conv1d(in_channels, channels, 4, 2, 1, bias=False)
+        self.conv = nn.Conv1d(conf.in_channels, conf.channels, 4, 2, 1, bias=False)
         # LN-ReLU-[FC-LN-ReLU]x4-FC
         self.encoder = nn.Sequential(
-            nn.LayerNorm(channels),
+            nn.LayerNorm(conf.channels),
             nn.ReLU(True),
             #
-            nn.Linear(channels, channels, bias=False),
-            nn.LayerNorm(channels),
+            nn.Linear(conf.channels, conf.channels, bias=False),
+            nn.LayerNorm(conf.channels),
             nn.ReLU(True),
             #
-            nn.Linear(channels, channels, bias=False),
-            nn.LayerNorm(channels),
+            nn.Linear(conf.channels, conf.channels, bias=False),
+            nn.LayerNorm(conf.channels),
             nn.ReLU(True),
             #
-            nn.Linear(channels, channels, bias=False),
-            nn.LayerNorm(channels),
+            nn.Linear(conf.channels, conf.channels, bias=False),
+            nn.LayerNorm(conf.channels),
             nn.ReLU(True),
             #
-            nn.Linear(channels, channels, bias=False),
-            nn.LayerNorm(channels),
+            nn.Linear(conf.channels, conf.channels, bias=False),
+            nn.LayerNorm(conf.channels),
             nn.ReLU(True),
             #
-            nn.Linear(channels, z_dim),
+            nn.Linear(conf.channels, conf.z_dim),
         )
-        self.codebook = VQEmbeddingEMA(n_embeddings, z_dim)
-        self.rnn = nn.LSTM(z_dim, c_dim, batch_first=True)
+        self.codebook = VQEmbeddingEMA(conf.n_embeddings, conf.z_dim)
+        self.rnn = nn.LSTM(conf.z_dim, conf.c_dim, batch_first=True)
 
     def encode(self, mel):
         """Encode spectrogram.
@@ -129,6 +147,15 @@ class VQEmbeddingEMA(nn.Module):
 
         return quantized, loss, perplexity
 
+
+@dataclass
+class ConfCPC:
+    n_prediction_steps: int = MISSING
+    n_speakers_per_batch: int = MISSING
+    n_utterances_per_speaker: int = MISSING
+    n_negatives: int = MISSING
+    z_dim: int = MISSING
+    c_dim: int = MISSING
 
 class CPCLoss(nn.Module):
     def __init__(self, n_speakers_per_batch, n_utterances_per_speaker, n_prediction_steps, n_negatives, z_dim, c_dim):
@@ -231,49 +258,61 @@ def get_gru_cell(gru):
     return gru_cell
 
 
+@dataclass
+class ConfVocoder:
+    """
+    Args:
+        in_channels: Dimension of latent vector z (NOT codebook size)
+        n_speakers: Number of speakers
+        speaker_embedding_dim: Dimension of speaker embedding
+        conditioning_channels: Dimension of PreNet hidden layer
+        mu_embedding_dim: Dimension of sample embedding
+        rnn_channels: Dimension of AR-RNN hidden/output
+        fc_channels: Dimension of FC hidden layer
+        bits: Depth of quantized bit
+        hop_length:
+    """
+    in_channels: int = MISSING
+    n_speakers: int = MISSING
+    speaker_embedding_dim: int = MISSING
+    conditioning_channels: int = MISSING
+    mu_embedding_dim: int = MISSING
+    rnn_channels: int = MISSING
+    fc_channels: int = MISSING
+    bits: int = MISSING
+    hop_length: int = MISSING
+
 class Vocoder(nn.Module):
     """Independently-trained vocoder conditioned on discrete VQ-CPC output.
     
     Model is bidirectional_PreNet + WaveRNN (=RNN_MS).
     """
-    def __init__(self, in_channels, n_speakers, speaker_embedding_dim,
-                 conditioning_channels, mu_embedding_dim, rnn_channels,
-                 fc_channels, bits, hop_length):
+    def __init__(self, conf: ConfVocoder):
         """
-        Args:
-            in_channels: Dimension of latent vector z (NOT codebook size)
-            n_speakers: Number of speakers
-            speaker_embedding_dim: Dimension of speaker embedding
-            conditioning_channels: Dimension of PreNet hidden layer
-            mu_embedding_dim: Dimension of sample embedding
-            rnn_channels: Dimension of AR-RNN hidden/output
-            fc_channels: Dimension of FC hidden layer
-            bits: Depth of quantized bit
-            hop_length:
         """
         super(Vocoder, self).__init__()
-        self.rnn_channels = rnn_channels
-        self.quantization_channels = 2**bits
-        self.hop_length = hop_length
+        self.rnn_channels = conf.rnn_channels
+        self.quantization_channels = 2**conf.bits
+        self.hop_length = conf.hop_length
 
         # Discrete code embedding: 512 discrete codes => continuous 64-dim space
         self.code_embedding = nn.Embedding(512, 64)
         # Speaker embedding for PreNet
-        self.speaker_embedding = nn.Embedding(n_speakers, speaker_embedding_dim)
+        self.speaker_embedding = nn.Embedding(conf.n_speakers, conf.speaker_embedding_dim)
 
         # PreNet: 2layer bidirection GRU with latent **and speaker embedding**
-        self.rnn1 = nn.GRU(in_channels + speaker_embedding_dim, conditioning_channels,
+        self.rnn1 = nn.GRU(conf.in_channels + conf.speaker_embedding_dim, conf.conditioning_channels,
                            num_layers=2, batch_first=True, bidirectional=True)
         # Sample embedding for AR
-        self.mu_embedding = nn.Embedding(self.quantization_channels, mu_embedding_dim)
+        self.mu_embedding = nn.Embedding(self.quantization_channels, conf.mu_embedding_dim)
         # AR-RNN: AR embedding + latent (bidi output) => hidden/output `rnn_channels`
-        self.rnn2 = nn.GRU(mu_embedding_dim + 2*conditioning_channels, rnn_channels, batch_first=True)
+        self.rnn2 = nn.GRU(conf.mu_embedding_dim + 2*conf.conditioning_channels, conf.rnn_channels, batch_first=True)
         # FC: AR hidden/output => FC hidden `fc_channels` => bit energy `self.quantization_channels`
-        self.fc = nn.Sequential([
-            nn.Linear(rnn_channels, fc_channels),
+        self.fc = nn.Sequential(
+            nn.Linear(conf.rnn_channels, conf.fc_channels),
             nn.ReLU(),
-            nn.Linear(fc_channels, self.quantization_channels),
-        ])
+            nn.Linear(conf.fc_channels, self.quantization_channels),
+        )
 
     def forward(self, x, z, speakers):
         """Forward a content representation sequence at once with teacher observation sequence for AR.
@@ -341,3 +380,9 @@ class Vocoder(nn.Module):
         output = np.asarray(output, dtype=np.float64)
         output = mulaw_decode(output, self.quantization_channels)
         return output
+
+@dataclass
+class ConfModel:
+    encoder: ConfEncoder = ConfEncoder()
+    cpc: ConfCPC = ConfCPC()
+    vocoder: ConfVocoder = ConfVocoder()

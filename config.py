@@ -1,4 +1,5 @@
-from typing import Callable, TypeVar, Union
+from model import ConfModel
+from typing import Callable, List, TypeVar, Union
 from dataclasses import dataclass
 
 from omegaconf import OmegaConf, SCMode, MISSING
@@ -92,6 +93,47 @@ synthesis_list: ./target_vc.json
 
 
 @dataclass
+class ConfTrainCPCSched:
+    warmup_epochs: int = MISSING
+    initial_lr: float = MISSING
+    max_lr: float = MISSING
+    gamma: float = MISSING
+    milestones: List[int] = MISSING
+
+
+@dataclass
+class ConfTrainCPC:
+    sample_frames: int = MISSING
+    n_speakers_per_batch: int = MISSING
+    n_utterances_per_speaker: int = MISSING
+    n_prediction_steps: int = MISSING
+    n_negatives: int = MISSING
+    n_epochs: int = MISSING
+    scheduler: ConfTrainCPCSched = ConfTrainCPCSched()
+    checkpoint_interval: int = MISSING
+    n_workers: int = MISSING
+    log_interval: int = MISSING    
+
+
+@dataclass
+class ConfTrainVocoder:
+    batch_size: int = MISSING
+    sample_frames: int = MISSING
+    n_steps: int = MISSING
+    optimizer_lr: float = MISSING
+    scheduler_milestones: List[int] = MISSING
+    scheduler_gamma: float = MISSING
+    checkpoint_interval: int = MISSING
+    n_workers: int = MISSING
+
+
+@dataclass
+class ConfTraining:
+    cpc: ConfTrainCPC = ConfTrainCPC()
+    vocoder: ConfTrainVocoder = ConfTrainVocoder()
+
+
+@dataclass
 class ConfGlobal:
     """Configuration of everything.
     Args:
@@ -113,6 +155,8 @@ class ConfGlobal:
     out_dir: str = MISSING
     synthesis_list: str = MISSING
     dataset: ConfDataset = ConfDataset()
+    model: ConfModel = ConfModel()
+    training: ConfTraining = ConfTraining()
 
 
 def conf_default() -> ConfGlobal:

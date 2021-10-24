@@ -89,5 +89,7 @@ def process_to_mel_mu(
     mu_law, spec = wave_to_mu_mel(wave, conf)
 
     # Save
+    path_o_mel.parent.mkdir(parents=True, exist_ok=True)
+    path_o_mel.parent.mkdir(parents=True, exist_ok=True)
     np.save(path_o_mulaw, mu_law)
     np.save(path_o_mel, spec)

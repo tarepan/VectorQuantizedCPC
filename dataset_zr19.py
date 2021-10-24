@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 from dataclasses import dataclass
 import pickle
 
+from torch import LongTensor, FloatTensor
 from torch.utils.data import Dataset
 from corpuspy.components.archive import hash_args, try_to_acquire_archive_contents, save_archive
 from omegaconf import MISSING
@@ -36,7 +37,7 @@ def get_dataset_mel_path(dir_dataset: Path, item_id: ItemIdZR19) -> Path:
     return dir_dataset / item_id.subtype / item_id.speaker / "mels" / f"{item_id.utterance_name}.mel.npy"
 
 
-Datum_ZR19 = Tuple[ND_LONG, ND_FP32, int]
+Datum_ZR19 = Tuple[LongTensor, FloatTensor, int]
 
 @dataclass
 class ConfDataset:
@@ -156,9 +157,9 @@ class ZR19MulawMelSpkDataset(Dataset[Datum_ZR19]):
             mulaw_clipped = mulaw[start_mulaw : end_mulaw]
 
             # print(f"mulaw: {mulaw.shape}, cut: {start_mulaw}~{end_mulaw}={end_mulaw - start_mulaw}, mulaw_clipped: {mulaw_clipped.shape}")
-            return mulaw_clipped, mel_clipped, speaker
+            return LongTensor(mulaw_clipped), FloatTensor(mel_clipped), speaker
         else:
-            return mulaw, mel, speaker
+            return LongTensor(mulaw), FloatTensor(mel), speaker
 
     def __getitem__(self, n: int) -> Datum_ZR19:
         """Load n-th datum.

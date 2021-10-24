@@ -142,7 +142,9 @@ class ZR19MulawMelSpkDataset(Dataset[Datum_ZR19]):
 
         if self._train:
             # Time-directional random clipping
-            start = random.randint(0, mel.shape[-2] - self.conf.clip_length_mel - 1)
+            # Waveform could be padded during STFT,
+            # so waveform could a little short at last mel frame.
+            start = random.randint(0, mel.shape[-1] - self.conf.clip_length_mel - 1 - 1)
 
             # Mel-spectrogram clipping
             start_mel = start

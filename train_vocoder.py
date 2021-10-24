@@ -55,7 +55,7 @@ def train_model(conf: ConfGlobal):
         gamma=conf.training.vocoder.scheduler_gamma)
 
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    if conf.resume:
+    if conf.resume is not "NoResume":
         print("Resume checkpoint from: {}:".format(conf.resume))
         checkpoint = torch.load(conf.resume, map_location=lambda storage, _: storage)
         vocoder.load_state_dict(checkpoint["vocoder"])

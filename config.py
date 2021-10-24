@@ -71,18 +71,16 @@ training:
         batch_size: 32
         sample_frames: 32
         n_steps: 160000
-        optimizer:
-            lr: 4e-4
-        scheduler:
-            milestones:
-                - 50000
-                - 75000
-                - 100000
-                - 125000
-            gamma: 0.5
+        optimizer_lr: 4e-4
+        scheduler_milestones:
+            - 50000
+            - 75000
+            - 100000
+            - 125000
+        scheduler_gamma: 0.5
         checkpoint_interval: 5000
         n_workers: 8
-resume: False
+resume: NoResume
 checkpoint_dir: checkpoints/vqcpc/version1
 cpc_checkpoint: checkpoints/cpc/english2019/model.ckpt-22000.pt
 vocoder_checkpoint: checkpoints/vocoder/english2019/version1/model.ckpt-xxxxxx.pt
@@ -147,7 +145,7 @@ class ConfGlobal:
         out_dir:
         synthesis_list:
     """
-    resume: Union[bool, str] = MISSING
+    resume: str = MISSING
     checkpoint_dir: str = MISSING
     cpc_checkpoint: str = MISSING
     vocoder_checkpoint: str = MISSING

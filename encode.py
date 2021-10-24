@@ -1,4 +1,3 @@
-import hydra
 import hydra.utils as utils
 
 import json
@@ -9,10 +8,10 @@ from tqdm import tqdm
 import torch
 
 from model import Encoder
+from config import load_conf, ConfGlobal
 
 
-@hydra.main(config_path="config/encode.yaml")
-def encode_dataset(cfg):
+def encode_dataset(cfg: ConfGlobal):
     out_dir = Path(utils.to_absolute_path(cfg.out_dir))
     out_dir.mkdir(exist_ok=True, parents=True)
 
@@ -25,8 +24,8 @@ def encode_dataset(cfg):
     encoder = Encoder(**cfg.model.encoder)
     encoder.to(device)
 
-    print("Load checkpoint from: {}:".format(cfg.checkpoint))
-    checkpoint_path = utils.to_absolute_path(cfg.checkpoint)
+    print("Load checkpoint from: {}:".format(cfg.cpc_checkpoint))
+    checkpoint_path = utils.to_absolute_path(cfg.cpc_checkpoint)
     checkpoint = torch.load(checkpoint_path, map_location=lambda storage, loc: storage)
     encoder.load_state_dict(checkpoint["encoder"])
 
@@ -69,4 +68,5 @@ def encode_dataset(cfg):
 
 
 if __name__ == "__main__":
-    encode_dataset()
+    conf = load_conf()
+    encode_dataset(conf)

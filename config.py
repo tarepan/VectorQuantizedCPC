@@ -1,19 +1,29 @@
-yaml_str = """
+from model import ConfModel
+from typing import Callable, List, TypeVar, Union
+from dataclasses import dataclass
+
+from omegaconf import OmegaConf, SCMode, MISSING
+
+from dataset_zr19 import ConfDataset
+
+
+CONF_DEFAULT_STR = """
 dataset:
-    dataset: 2019
-    language: english
-    path: 2019/english
-    n_speakers: 102
-preprocessing:
-    sr: 16000
-    n_fft: 2048
-    n_mels: 80
-    fmin: 50
-    preemph: 0.97
-    top_db: 80
-    hop_length: 160
-    win_length: 400
-    bits: 8
+    adress_data_root: null
+    clip_length_mel: ${training.vocoder.sample_frames}
+    mel_stft_stride: 160
+    corpus:
+        download: false
+    preprocess:
+        sr: 16000
+        n_fft: 2048
+        n_mels: 80
+        fmin: 50
+        preemph: 0.97
+        top_db: 80
+        # hop_length: local sync
+        win_length: 400
+        bits: 8
 model:
     encoder:
         in_channels: ${preprocessing.n_mels}
@@ -72,37 +82,128 @@ training:
             gamma: 0.5
         checkpoint_interval: 5000
         n_workers: 8
+resume: False
+checkpoint_dir: checkpoints/vqcpc/version1
+cpc_checkpoint: checkpoints/cpc/english2019/model.ckpt-22000.pt
+vocoder_checkpoint: checkpoints/vocoder/english2019/version1/model.ckpt-xxxxxx.pt
+save_auxiliary: False
+in_dir: zerospeech/2019
+out_dir: results/z2019en
+synthesis_list: ./target_vc.json
 """
 
-# Required and specific to some step
-## train_vocoder
-resume: False
-cpc_checkpoint: ???
-checkpoint_dir: ???
-## Train_cpc
-resume: False
-checkpoint_dir: ???
-## preprocessing
-in_dir: ???
-## encode
-checkpoint: ???
-out_dir: ???
-save_auxiliary: False
-## convert
-synthesis_list: ???
-in_dir: ???
-out_dir: ???
-cpc_checkpoint: ???
-vocoder_checkpoint: ???
 
 @dataclass
-class ConfEncode:
-    common: ConfAllStep = ConfAllStep()
-    checkpoint: str = MISSING
-    out_dir: str = MISSING
-    save_auxiliary: False
+class ConfTrainCPCSched:
+    warmup_epochs: int = MISSING
+    initial_lr: float = MISSING
+    max_lr: float = MISSING
+    gamma: float = MISSING
+    milestones: List[int] = MISSING
 
-# Requiredで入力させたい、かつ特定stepでしか使わない
-# => 全stepで入力させるのは無駄. でもall-in-one confにMISSINGで置いておくと入力無しでerror.
-# => dataclassのextendで各stepごとにconfのsubclass設定、そこではMISSINGが適切
-#
+
+@dataclass
+class ConfTrainCPC:
+    sample_frames: int = MISSING
+    n_speakers_per_batch: int = MISSING
+    n_utterances_per_speaker: int = MISSING
+    n_prediction_steps: int = MISSING
+    n_negatives: int = MISSING
+    n_epochs: int = MISSING
+    scheduler: ConfTrainCPCSched = ConfTrainCPCSched()
+    checkpoint_interval: int = MISSING
+    n_workers: int = MISSING
+    log_interval: int = MISSING    
+
+
+@dataclass
+class ConfTrainVocoder:
+    batch_size: int = MISSING
+    sample_frames: int = MISSING
+    n_steps: int = MISSING
+    optimizer_lr: float = MISSING
+    scheduler_milestones: List[int] = MISSING
+    scheduler_gamma: float = MISSING
+    checkpoint_interval: int = MISSING
+    n_workers: int = MISSING
+
+
+@dataclass
+class ConfTraining:
+    cpc: ConfTrainCPC = ConfTrainCPC()
+    vocoder: ConfTrainVocoder = ConfTrainVocoder()
+
+
+@dataclass
+class ConfGlobal:
+    """Configuration of everything.
+    Args:
+        resume: Resume training from `resume` path
+        checkpoint_dir:
+        cpc_checkpoint:
+        vocoder_checkpoint:
+        save_auxiliary:
+        in_dir:
+        out_dir:
+        synthesis_list:
+    """
+    resume: Union[bool, str] = MISSING
+    checkpoint_dir: str = MISSING
+    cpc_checkpoint: str = MISSING
+    vocoder_checkpoint: str = MISSING
+    save_auxiliary: bool = MISSING
+    in_dir: str = MISSING
+    out_dir: str = MISSING
+    synthesis_list: str = MISSING
+    dataset: ConfDataset = ConfDataset()
+    model: ConfModel = ConfModel()
+    training: ConfTraining = ConfTraining()
+
+
+def conf_default() -> ConfGlobal:
+    """Default global configuration.
+    """
+    return OmegaConf.merge(
+        OmegaConf.structured(ConfGlobal),
+        OmegaConf.create(CONF_DEFAULT_STR)
+    )
+
+T = TypeVar('T')
+def gen_load_conf(gen_conf_default: Callable[[], T], ) -> Callable[[], T]:
+    """Generate 'Load configuration type-safely' function.
+    Priority: CLI args > CLI-specified config yaml > Default
+    Args:
+        gen_conf_default: Function which generate default structured config
+    """
+
+    def generated_load_conf() -> T:
+        default = gen_conf_default()
+        cli = OmegaConf.from_cli()
+        extends_path = cli.get("path_extend_conf", None)
+        if extends_path:
+            extends = OmegaConf.load(extends_path)
+            conf_final = OmegaConf.merge(default, extends, cli)
+        else:
+            conf_final = OmegaConf.merge(default, cli)
+
+        # Design Note -- OmegaConf instance v.s. DataClass instance --
+        #   OmegaConf instance has runtime overhead in exchange for type safety.
+        #   Configuration is constructed/finalized in early stage,
+        #   so config is eternally valid after validation in last step of early stage.
+        #   As a result, we can safely convert OmegaConf to DataClass after final validation.
+        #   This prevent (unnecessary) runtime overhead in later stage.
+        #
+        #   One demerit: No "freeze" mechanism in instantiated dataclass.
+        #   If OmegaConf, we have `OmegaConf.set_readonly(conf_final, True)`
+
+        # [todo]: Return both dataclass and OmegaConf because OmegaConf has export-related utils.
+
+        # `.to_container()` with `SCMode.INSTANTIATE` resolve interpolations and check MISSING.
+        # It is equal to whole validation.
+        return OmegaConf.to_container(conf_final, structured_config_mode=SCMode.INSTANTIATE)
+
+    return generated_load_conf
+
+load_conf = gen_load_conf(conf_default)
+"""Load configuration type-safely.
+"""

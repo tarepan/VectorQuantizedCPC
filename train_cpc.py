@@ -13,6 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 from dataset import CPCDataset
 from scheduler import WarmupScheduler
 from model import Encoder, CPCLoss
+from config import load_conf, ConfGlobal
 
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -36,8 +37,7 @@ def save_checkpoint(encoder, cpc, optimizer, scheduler, epoch, checkpoint_dir):
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
-@hydra.main(config_path="config/train_cpc.yaml")
-def train_model(cfg):
+def train_model(cfg: ConfGlobal):
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     tensorboard_path = Path(utils.to_absolute_path("tensorboard")) / cfg.checkpoint_dir
     checkpoint_dir = Path(utils.to_absolute_path(cfg.checkpoint_dir))
@@ -154,5 +154,6 @@ def train_model(cfg):
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 if __name__ == "__main__":
-    train_model()
+    conf = load_conf()
+    train_model(conf)
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

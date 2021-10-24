@@ -2,6 +2,7 @@ from pathlib import Path
 import random
 from typing import List, Optional, Tuple
 from dataclasses import dataclass
+import pickle
 
 from torch.utils.data import Dataset
 from corpuspy.components.archive import hash_args, try_to_acquire_archive_contents, save_archive
@@ -17,6 +18,11 @@ import numpy.typing as npt
 ND_FP32 = npt.NDArray[np.float32]
 ND_LONG = npt.NDArray[np.int32]
 
+
+def get_dataset_item_id_list(dir_dataset: Path) -> Path:
+    """Get μ-law discrete waveform item path in dataset.
+    """
+    return dir_dataset / "id_list.pickle.bin"
 
 def get_dataset_mulaw_path(dir_dataset: Path, item_id: ItemIdZR19) -> Path:
     """Get μ-law discrete waveform item path in dataset.
@@ -67,7 +73,7 @@ class ZR19MulawMelSpkDataset(Dataset[Datum_ZR19]):
         self._train = train
 
         self._corpus = ZR19(conf.corpus)
-        arg_hash = hash_args(conf.preprocess.sr, conf.preprocess.bits, conf.preprocess.hop_length)
+        arg_hash = hash_args(conf.preprocess.sr, conf.preprocess.bits, conf.preprocess.hop_length, conf.clip_length_mel)
         archive_name = f"{arg_hash}.zip"
 
         archive_root = conf.adress_data_root
@@ -83,15 +89,6 @@ class ZR19MulawMelSpkDataset(Dataset[Datum_ZR19]):
         # Contents: contents are extracted in local dataset directory
         self._path_contents = local_root/"contents"/arg_hash
 
-        # Selection based on audio length
-        self._ids: List[ItemIdZR19] = [
-            item_id for item_id in self._corpus.get_identities()
-            if len(librosa.load(self._corpus.get_item_path(item_id), sr=conf.preprocess.sr)[0])
-            >
-            (conf.clip_length_mel + 2) * conf.mel_stft_stride
-        ]
-        self._speakers: List[str] = list(set(map(lambda item_id: item_id.speaker, self._ids)))
-
         # Deploy dataset contents.
         contents_acquired = try_to_acquire_archive_contents(adress_archive, self._path_contents)
         if not contents_acquired:
@@ -100,12 +97,31 @@ class ZR19MulawMelSpkDataset(Dataset[Datum_ZR19]):
             self._generate_dataset_contents()
             save_archive(self._path_contents, adress_archive)
             print("Dataset contents was generated and archive was saved.")
+        else:
+            # Load item_id list
+            with open(get_dataset_item_id_list(self._path_contents), mode='rb') as f:
+                self._ids: List[ItemIdZR19] = pickle.load(f)
+        self._speakers: List[str] = list(set(map(lambda item_id: item_id.speaker, self._ids)))
 
     def _generate_dataset_contents(self) -> None:
         """Generate dataset with corpus auto-download and preprocessing.
         """
 
         self._corpus.get_contents()
+
+        # Data selection based on audio length
+        self._ids: List[ItemIdZR19] = [
+            item_id for item_id in self._corpus.get_identities()
+            if len(librosa.load(self._corpus.get_item_path(item_id), sr=self.conf.preprocess.sr)[0])
+            >
+            (self.conf.clip_length_mel + 2) * self.conf.mel_stft_stride
+        ]
+        # Save the item_id list
+        path_id_list = get_dataset_item_id_list(self._path_contents)
+        path_id_list.parent.mkdir(parents=True, exist_ok=True)
+        with open(path_id_list, mode='wb') as f:
+            pickle.dump(self._ids, f)
+
         print("Preprocessing...")
         for id in self._ids:
             path_i_wav = self._corpus.get_item_path(id)

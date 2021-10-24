@@ -132,7 +132,7 @@ class ZR19MulawMelSpkDataset(Dataset[Datum_ZR19]):
 
     def _load_datum(self, id: ItemIdZR19) -> Datum_ZR19:
 
-        # (T_mel, freq)
+        # (freq, T_mel)
         mel: ND_FP32 = load(get_dataset_mel_path(self._path_contents, id))
         # (T_mel * hop_length,)
         mulaw: ND_LONG = load(get_dataset_mulaw_path(self._path_contents, id))
@@ -147,7 +147,7 @@ class ZR19MulawMelSpkDataset(Dataset[Datum_ZR19]):
             start_mel = start
             end_mel = start + self.conf.clip_length_mel
             # (T_mel, freq) -> (clip_length_mel, freq)
-            mel_clipped = mel[start_mel : end_mel]
+            mel_clipped = mel[:, start_mel : end_mel]
 
             # Waveform clipping
             start_mulaw = self.conf.mel_stft_stride * start_mel
@@ -155,6 +155,7 @@ class ZR19MulawMelSpkDataset(Dataset[Datum_ZR19]):
             # (T_mel * hop_length,) -> (clip_length_mel * hop_length,)
             mulaw_clipped = mulaw[start_mulaw : end_mulaw]
 
+            # print(f"mulaw: {mulaw.shape}, cut: {start_mulaw}~{end_mulaw}={end_mulaw - start_mulaw}, mulaw_clipped: {mulaw_clipped.shape}")
             return mulaw_clipped, mel_clipped, speaker
         else:
             return mulaw, mel, speaker

@@ -148,7 +148,7 @@ def train_model(conf: ConfGlobal):
                     _, _, indices = encoder.encode(mels)
                     # output::float
                     output = vocoder.generate(indices, speakers)
-                soundfile.write(f"{str(dir_sample)}/No{i}_step{global_step}.wav", output[0], conf.dataset.preprocess.sr)
+                soundfile.write(f"{str(dir_sample)}/No{i}_step{global_step}.wav", output, conf.dataset.preprocess.sr)
         ############################### /epoch ################################
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

@@ -26,7 +26,7 @@ dataset:
         bits: 8
 model:
     encoder:
-        in_channels: ${preprocessing.n_mels}
+        in_channels: ${dataset.preprocess.n_mels}
         channels: 512
         n_embeddings: 512
         z_dim: 64
@@ -41,13 +41,14 @@ model:
     vocoder:
         in_channels: ${model.encoder.z_dim}
         conditioning_channels: 128
-        n_speakers: ${dataset.n_speakers}
+        n_speakers: 102
+        # todo: Fix n_speakers dependency. Now this is not hardcoded.
         speaker_embedding_dim: 64
         mu_embedding_dim: 256
         rnn_channels: 896
         fc_channels: 256
-        bits: ${preprocessing.bits}
-        hop_length: ${preprocessing.hop_length}
+        bits: ${dataset.preprocess.bits}
+        hop_length: ${dataset.preprocess.hop_length}
         bidirectional: true
 training:
     cpc:
@@ -66,7 +67,7 @@ training:
                 - 20000
         checkpoint_interval: 500
         n_workers: 8
-        log_interval: 10    
+        log_interval: 10
     vocoder:
         batch_size: 32
         sample_frames: 32

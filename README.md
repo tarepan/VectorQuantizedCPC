@@ -24,8 +24,6 @@ Clone of official implmentation of VQ-CPC+Vocoder for [voice conversion](https:/
   <sup><strong>Fig 1:</strong> VQ-CPC model architecture.</sup>
 </p>
 
-This work is based on *CPC* and *original VQ-VAE*.
-
 ## Demo
 - [Original repo's samples](https://bshall.github.io/VectorQuantizedCPC/)
 
@@ -37,36 +35,14 @@ Jump to above link, then Run. That's all!
 ### Pretrained models
 Pretrained weights for the 2019 English and Indonesian datasets can be found [here](https://github.com/bshall/VectorQuantizedCPC/releases/tag/v0.1).
 
-### Requirements
-- PyTorch>=1.4
-- [NVIDIA/apex](https://github.com/NVIDIA/apex)
-
 ### Install
 ```bash
 pip install -r requirements.txt
 ```
 
-### Data and Preprocessing
-
-1.  Download and extract the [ZeroSpeech2020 datasets](https://download.zerospeech.com/).
-
-2.  Download the train/test splits [here](https://github.com/bshall/VectorQuantizedCPC/releases/tag/v0.1) 
-    and extract in the root directory of the repo.
-    Train data is ZR19/Development/unit (9474 utterances)  
-    
-3.  Preprocess audio and extract train/test log-Mel spectrograms:
-    ```
-    python preprocess.py in_dir=/path/to/dataset dataset=[2019/english or 2019/surprise]
-    ```
-    Note: `in_dir` must be the path to the `2019` folder. 
-    For `dataset` choose between `2019/english` or `2019/surprise`.
-    Other datasets will be added in the future.
-    
-    Example usage:
-    ```
-    python preprocess.py in_dir=../datasets/2020/2019 dataset=2019/english
-    ```
-
+### preprocessing <!-- omit in toc -->
+"Batteries Included" 😉  
+Dataset class transparently downloads corpus and preprocesses it for you.  
 
 ### Training
 Train VQ-CPC model, then train Vocoder model.  
@@ -86,14 +62,13 @@ python train_cpc.py checkpoint_dir=checkpoints/cpc/2019english dataset=2019/engl
 ```
 
 #### Vocoder
-```
-python train_vocoder.py cpc_checkpoint=path/to/cpc/checkpoint checkpoint_dir=path/to/checkpoint_dir dataset=[2019/english or 2019/surprise]
+```bash
+python train_vocoder.py \
+    cpc_checkpoint=checkpoints/cpc/english2019/model.ckpt-22000.pt \
+    checkpoint_dir=path/to/your/checkpoint/dir \
 ```
 
-Example usage:
-```
-python train_vocoder.py cpc_checkpoint=checkpoints/cpc/english2019/model.ckpt-24000.pt checkpoint_dir=checkpoints/vocoder/english2019
-```
+Sample audios will be periodically generated in `./out_sample` directory.
 
 ### Evaluation
 
@@ -149,6 +124,9 @@ Eprint = {arXiv:2005.09409},
 
 [paper]:https://arxiv.org/abs/2005.09409
 [notebook]:https://colab.research.google.com/github/tarepan/VectorQuantizedCPC/blob/master/VQ_CPC_training.ipynb
+
+## Note of Original Repository
+- Train data is ZR19/Development/unit (9474 utterances)
 
 ## Contact
 Please check [original repository](https://github.com/bshall/VectorQuantizedCPC).  

@@ -41,17 +41,19 @@ class ConfPreprocessing:
     win_length: int = MISSING
     bits: int = MISSING
 
-def process_wav(wav: np.ndarray, conf: ConfPreprocessing) -> (np.ndarray, np.ndarray):
+def wave_to_mu_mel(wave: np.ndarray, conf: ConfPreprocessing) -> (np.ndarray, np.ndarray):
     """
+    Convert a waveform into μ-law waveform and mel spectrogram.
+
     Args:
-        wav: Target waveform
+        wave: Target waveform
         conf: Configuration of preprocessing
     """
     # Scale adjustment: [?, ?] -> (-1, +1)
-    wav = wav / np.abs(wav).max() * 0.999
+    wave = wave / np.abs(wave).max() * 0.999
 
     # Preemphasis -> melspectrogram -> log-mel spec -> ? -> μ-law
-    mel = librosa.feature.melspectrogram(preemphasis(wav, conf.preemph),
+    mel = librosa.feature.melspectrogram(preemphasis(wave, conf.preemph),
                                          sr=conf.sr,
                                          n_fft=conf.n_fft,
                                          n_mels=conf.n_mels,
@@ -62,15 +64,16 @@ def process_wav(wav: np.ndarray, conf: ConfPreprocessing) -> (np.ndarray, np.nda
     logmel = librosa.amplitude_to_db(mel, top_db=conf.top_db)
     logmel = logmel / conf.top_db + 1
 
-    wav = mulaw_encode(wav, mu=2**conf.bits)
+    wave = mulaw_encode(wave, mu=2**conf.bits)
 
-    return wav, logmel
+    return wave, logmel
 
 
-def preprocess_dataset(cfg: ConfGlobal):
+def process_to_mel_mu(path_i_wav: Path, path_o_mel: Path, path_o_mulaw: Path, cfg: ConfGlobal):
+    """
+    Preprocess specified audio file into mel-spectrogram and μ-law waveform file.
+    """
 
-    # zerospeech/2019
-    in_dir = Path(cfg.in_dir)
     # datasets/2019
     out_dir = Path("datasets") / cfg.dataset.dataset
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -81,25 +84,10 @@ def preprocess_dataset(cfg: ConfGlobal):
         # `train.json` | `test.json`
         with open(split_path.with_suffix(".json")) as file:
             metadata = json.load(file)
-            for in_path, _, duration, out_path in metadata:
-                # in_path
-                # duration: (maybe) effective duration
-                # out_path
-
-                # Load uttered part of a .wav file
-                # zerospeech/2019/{in_path}
-                # e.g. wav_path = "zerospeech/2019/english/train/unit/S015_0361841101"
-                wav_path = in_dir / in_path
-                wav, _ = librosa.load(wav_path.with_suffix(".wav"), sr=conf.preprocessing.sr, duration=duration)
-                mu_law, spec = process_wav(wav, cfg.preprocessing)
-                # Output:
-                # datasets/2019/{out_path}
-                # e.g. out_path = "datasets/2019/english/train/S015/S015_0361841101"
-                out_path = out_dir / out_path
-                out_path.parent.mkdir(parents=True, exist_ok=True)
-                np.save(out_path.with_suffix(".wav.npy"), mu_law)
-                np.save(out_path.with_suffix(".mel.npy"), spec)
-        print(f"{split} preprocessed.")
+            wave, _ = librosa.load(path_i_wav, sr=conf.preprocessing.sr)
+            mu_law, spec = wave_to_mu_mel(wave, cfg.preprocessing)
+            np.save(path_o_mulaw, mu_law)
+            np.save(path_o_mel, spec)
 
 
 if __name__ == "__main__":

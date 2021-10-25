@@ -1,14 +1,15 @@
 from dataclasses import dataclass
+import math
+
 from omegaconf.omegaconf import MISSING
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
-
 from tqdm import tqdm
 import numpy as np
+
 from preprocess import mulaw_decode
-import math
 
 
 @dataclass
@@ -262,27 +263,32 @@ def get_gru_cell(gru):
 class ConfVocoder:
     """
     Args:
-        in_channels: Dimension of latent vector z (NOT codebook size)
         n_speakers: Number of speakers
         speaker_embedding_dim: Dimension of speaker embedding
-        conditioning_channels: Dimension of PreNet hidden layer
+        in_channels: Dimension of latent vector z (NOT codebook size)
+        dim_voc_latent: Dimension of latent between PreNet and WaveRNN
+        upsampling_t: Factor of time-direcitonal latent upsampling (e.g. STFT hop_length)
+        bits_mu_law: Depth of quantized bit
         mu_embedding_dim: Dimension of sample embedding
         rnn_channels: Dimension of AR-RNN hidden/output
         fc_channels: Dimension of FC hidden layer
-        bits: Depth of quantized bit
-        hop_length:
         bidirectional: Whether use bidirectional PreNet GRU or not
     """
-    in_channels: int = MISSING
+    # dim_i_feature: int = MISSING
+    # Speaker embedding
     n_speakers: int = MISSING
     speaker_embedding_dim: int = MISSING
-    conditioning_channels: int = MISSING
+    # Vocoder
+    in_channels: int = MISSING
+    dim_voc_latent: int = MISSING
+    upsampling_t: int = MISSING
+    bits_mu_law: int = MISSING
+    # PreNet
+    bidirectional: bool = MISSING
+    # AR
     mu_embedding_dim: int = MISSING
     rnn_channels: int = MISSING
     fc_channels: int = MISSING
-    bits: int = MISSING
-    hop_length: int = MISSING
-    bidirectional: bool = MISSING
 
 class Vocoder(nn.Module):
     """Independently-trained vocoder conditioned on discrete VQ-CPC output.
@@ -294,13 +300,12 @@ class Vocoder(nn.Module):
         """
         super(Vocoder, self).__init__()
         self.rnn_channels = conf.rnn_channels
-        self.quantization_channels = 2**conf.bits
-        self.hop_length = conf.hop_length
+        self.quantization_channels = 2**conf.bits_mu_law
+        self.time_upsampling_factor = conf.upsampling_t
 
-        # Harmonized with tarepan/UniversalVocoding
+        # Hidden size adjustment: If bidirectional, output dimension become twice
         layer = 2
-        dim_o_conditioning = 2*conf.conditioning_channels
-        dim_h_prenet = conf.conditioning_channels if conf.bidirectional else (2 * conf.conditioning_channels)
+        dim_h_prenet = conf.dim_voc_latent // 2 if conf.bidirectional else conf.dim_voc_latent        
         bi, uni = "bidirectional", "unidirectional"
         print(f"PreNet: {layer}-layer { bi if conf.bidirectional else uni } GRU")
 
@@ -315,7 +320,7 @@ class Vocoder(nn.Module):
         # Sample embedding for AR
         self.mu_embedding = nn.Embedding(self.quantization_channels, conf.mu_embedding_dim)
         # AR-RNN: AR embedding + latent (bidi output) => hidden/output `rnn_channels`
-        self.rnn2 = nn.GRU(conf.mu_embedding_dim + dim_o_conditioning, conf.rnn_channels, batch_first=True)
+        self.rnn2 = nn.GRU(conf.mu_embedding_dim + conf.dim_voc_latent, conf.rnn_channels, batch_first=True)
         # FC: AR hidden/output => FC hidden `fc_channels` => bit energy `self.quantization_channels`
         self.fc = nn.Sequential(
             nn.Linear(conf.rnn_channels, conf.fc_channels),
@@ -346,7 +351,7 @@ class Vocoder(nn.Module):
 
         # PreNet
         z, _ = self.rnn1(latent_series)
-        z = F.interpolate(z.transpose(1, 2), scale_factor=self.hop_length)
+        z = F.interpolate(z.transpose(1, 2), scale_factor=self.time_upsampling_factor)
         conditioning = z.transpose(1, 2)
 
         # WaveRNN
@@ -373,7 +378,7 @@ class Vocoder(nn.Module):
 
         # PreNet
         z, _ = self.rnn1(z)
-        z = F.interpolate(z.transpose(1, 2), scale_factor=self.hop_length)
+        z = F.interpolate(z.transpose(1, 2), scale_factor=self.time_upsampling_factor)
         z = z.transpose(1, 2)
 
         # Sample AR

@@ -147,7 +147,7 @@ def train_model(conf: ConfGlobal):
                 with torch.no_grad():
                     _, _, indices = encoder.encode(mels)
                     # output::float
-                    output = vocoder.generate(indices, speakers).numpy()[0]
+                    output = vocoder.generate(indices, speakers).cpu().numpy()[0]
                 soundfile.write(f"{str(dir_sample)}/No{i}_step{global_step}.wav", output, conf.dataset.preprocess.sr)
         ############################### /epoch ################################
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

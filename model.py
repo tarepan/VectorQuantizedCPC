@@ -263,12 +263,10 @@ class ConfVocoder:
         in_channels: Dimension of latent vector z (NOT codebook size)
         n_speakers: Number of speakers
         speaker_embedding_dim: Dimension of speaker embedding
-        bits_mu_law: Depth of quantized bit
     """
     in_channels: int = MISSING
     n_speakers: int = MISSING
     speaker_embedding_dim: int = MISSING
-    bits_mu_law: int = MISSING
     rnnms: ConfRNNMSVocoder = ConfRNNMSVocoder()
 
 class Vocoder(nn.Module):

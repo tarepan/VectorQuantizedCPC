@@ -43,12 +43,11 @@ model:
         # todo: Fix n_speakers dependency. Now this is not hardcoded.
         n_speakers: 102
         speaker_embedding_dim: 64
-        bits_mu_law: ${dataset.preprocess.bits}
         rnnms:
             # `dim_i_feature == ..in_channels + ..speaker_embedding_dim` at runtime
             dim_i_feature: 0
             dim_voc_latent: 256
-            bits_mu_law: int = MISSING
+            bits_mu_law: ${dataset.preprocess.bits}
             upsampling_t: ${dataset.preprocess.hop_length}
             prenet:
                 # dim_i: local sync

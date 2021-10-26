@@ -12,13 +12,15 @@ from rnnms.networks.vocoder import ConfRNNMSVocoder, RNNMSVocoder
 class ConfVocoder:
     """
     Args:
-        in_channels: Dimension of latent vector z (NOT codebook size)
+        size_i_codebook: Size of input discrete codebook
+        dim_i_embedding: Dimension of embedded input
         n_speakers: Number of speakers
-        speaker_embedding_dim: Dimension of speaker embedding
+        dim_speaker_embedding: Dimension of speaker embedding
     """
-    in_channels: int = MISSING
+    size_i_codebook: int = MISSING
+    dim_i_embedding: int = MISSING
     n_speakers: int = MISSING
-    speaker_embedding_dim: int = MISSING
+    dim_speaker_embedding: int = MISSING
     rnnms: ConfRNNMSVocoder = ConfRNNMSVocoder()
 
 class Vocoder(nn.Module):
@@ -32,8 +34,8 @@ class Vocoder(nn.Module):
         super(Vocoder, self).__init__()
 
         # (discrete) latent_code/speaker_id => (continuous) embedding space
-        self.code_embedding = nn.Embedding(512, conf.in_channels)
-        self.speaker_embedding = nn.Embedding(conf.n_speakers, conf.speaker_embedding_dim)
+        self.code_embedding = nn.Embedding(conf.size_i_codebook, conf.dim_i_embedding)
+        self.speaker_embedding = nn.Embedding(conf.n_speakers, conf.dim_speaker_embedding)
         self.rnnms = RNNMSVocoder(conf.rnnms)
 
     def forward(self, x: Tensor, z: Tensor, speaker: Tensor):
@@ -47,7 +49,7 @@ class Vocoder(nn.Module):
         Returns:
             Energy distribution of `bits` bit μ-law value
         """
-        
+
         # Content embedding and upsampling
         z_embed = self.code_embedding(z)
         # (Batch, Time, Embed_z) => (Batch, Embed_z, 2*Time) => (Batch, 2*Time, Embed_z)

@@ -14,8 +14,8 @@ seed: 13
 sampling_rate: 16000
 bit_mulaw: 8
 dim_mel_freq: 80
-dim_latent: 64
 size_latent_codebook: 512 
+dim_latent: 64
 dim_cpc_context: 256
 cpc_checkpoint: checkpoints/cpc/english2019/model.ckpt-22000.pt
 vocoder_checkpoint: checkpoints/vocoder/english2019/version1/model.ckpt-xxxxxx.pt
@@ -57,10 +57,11 @@ training_vocoder:
     model:
         sampling_rate: ${sampling_rate}
         network:
-            in_channels: ${dim_latent}
+            size_i_codebook: ${size_latent_codebook}
+            dim_i_embedding: ${dim_latent}
             # todo: Fix n_speakers dependency. Now this is not hardcoded.
             n_speakers: 102
-            speaker_embedding_dim: 64
+            dim_speaker_embedding: 64
             rnnms:
                 dim_voc_latent: 256
                 bits_mu_law: ${bit_mulaw}
@@ -149,8 +150,8 @@ class ConfGlobal:
         sampling_rate: Audio sampling rate
         bit_mulaw: Bit depth of mu-law signal
         dim_mel_freq: Dimension of mel-spectrogram's frequency
-        dim_latent: Dimension of latent vector
         size_latent_codebook: Codebook size of latent (Number of index)
+        dim_latent: Dimension of latent vector
         cpc_checkpoint: CPC encoder checkpoint
         vocoder_checkpoint: RNNMS vocoder checkpoint
         save_auxiliary:
@@ -160,8 +161,8 @@ class ConfGlobal:
     sampling_rate: int = MISSING
     bit_mulaw: int = MISSING
     dim_mel_freq: int = MISSING
-    dim_latent: int = MISSING
     size_latent_codebook: int = MISSING 
+    dim_latent: int = MISSING
     cpc_checkpoint: str = MISSING
     vocoder_checkpoint: str = MISSING
     save_auxiliary: bool = MISSING
@@ -185,7 +186,7 @@ def conf_programatic(conf: ConfGlobal) -> ConfGlobal:
     """
     # Target: `conf.model.vocoder.rnnms.dim_i_feature`
     conf_voc = conf.training_vocoder.model.network
-    conf_voc.rnnms.dim_i_feature = conf_voc.in_channels + conf_voc.speaker_embedding_dim
+    conf_voc.rnnms.dim_i_feature = conf_voc.dim_i_embedding + conf_voc.dim_speaker_embedding
 
     # PlaceHolder
 

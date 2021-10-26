@@ -5,5 +5,3 @@ tqdm>=4.45.0
 omegaconf>=2.1.0
 pyloudnorm>=0.1.0
 soundfile>=0.10.1
-git+git://github.com/tarepan/corpuspy.git#egg=corpuspy
-git+git://github.com/tarepan/UniversalVocoding.git#egg=rnnms

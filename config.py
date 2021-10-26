@@ -1,64 +1,40 @@
-from model import ConfModel
-from typing import Callable, List, TypeVar, Union
+from typing import Callable, List, TypeVar
 from dataclasses import dataclass
 
 from omegaconf import OmegaConf, SCMode, MISSING
 
 from dataset_zr19 import ConfDataset
+from train_vocoder import ConfTrainVocoder
+from model import ConfModel
+from datamodule import ConfData
 
 
 CONF_DEFAULT_STR = """
-dataset:
-    adress_data_root: null
-    clip_length_mel: ${training.vocoder.sample_frames}
-    mel_stft_stride: 160
-    corpus:
-        download: false
-    preprocess:
-        sr: 16000
-        n_fft: 2048
-        n_mels: 80
-        fmin: 50
-        preemph: 0.97
-        top_db: 80
-        # hop_length: local sync
-        win_length: 400
-        bits: 8
+seed: 13
+sampling_rate: 16000
+bit_mulaw: 8
+dim_mel_freq: 80
+dim_latent: 64
+size_latent_codebook: 512 
+dim_cpc_context: 256
+cpc_checkpoint: checkpoints/cpc/english2019/model.ckpt-22000.pt
+vocoder_checkpoint: checkpoints/vocoder/english2019/version1/model.ckpt-xxxxxx.pt
+save_auxiliary: False
+synthesis_list: ./target_vc.json
 model:
     encoder:
-        in_channels: ${dataset.preprocess.n_mels}
+        in_channels: ${dim_mel_freq}
         channels: 512
-        n_embeddings: 512
-        z_dim: 64
-        c_dim: 256
+        n_embeddings: ${size_latent_codebook}
+        z_dim: ${dim_latent}
+        c_dim: ${dim_cpc_context}
     cpc:
         n_prediction_steps: ${training.cpc.n_prediction_steps}
         n_speakers_per_batch: ${training.cpc.n_speakers_per_batch}
         n_utterances_per_speaker: ${training.cpc.n_utterances_per_speaker}
         n_negatives: ${training.cpc.n_negatives}
-        z_dim: ${model.encoder.z_dim}
-        c_dim: ${model.encoder.c_dim}
-    vocoder:
-        in_channels: ${model.encoder.z_dim}
-        # todo: Fix n_speakers dependency. Now this is not hardcoded.
-        n_speakers: 102
-        speaker_embedding_dim: 64
-        rnnms:
-            # dim_i_feature: programatic synth
-            dim_voc_latent: 256
-            bits_mu_law: ${dataset.preprocess.bits}
-            upsampling_t: ${dataset.preprocess.hop_length}
-            prenet:
-                # dim_i: local sync
-                # dim_o: local sync
-                num_layers: 2
-                bidirectional: true
-            wave_ar:
-                # size_i_cnd: local sync
-                size_i_embed_ar: 256
-                size_h_rnn: 896
-                size_h_fc: 256
-                # size_o_bit: local sync
+        z_dim: ${dim_latent}
+        c_dim: ${dim_cpc_context}
 training:
     cpc:
         sample_frames: 128
@@ -77,27 +53,62 @@ training:
         checkpoint_interval: 500
         n_workers: 8
         log_interval: 10
-    vocoder:
+training_vocoder:
+    model:
+        sampling_rate: ${sampling_rate}
+        network:
+            in_channels: ${dim_latent}
+            # todo: Fix n_speakers dependency. Now this is not hardcoded.
+            n_speakers: 102
+            speaker_embedding_dim: 64
+            rnnms:
+                dim_voc_latent: 256
+                bits_mu_law: ${bit_mulaw}
+                upsampling_t: ${data.dataset.preprocess.hop_length}
+                prenet:
+                    num_layers: 2
+                    bidirectional: true
+                wave_ar:
+                    size_i_embed_ar: 256
+                    size_h_rnn: 896
+                    size_h_fc: 256
+        optim:
+            learning_rate: 4e-4
+            sched_milestones:
+                - 50000
+                - 75000
+                - 100000
+                - 125000
+            sched_gamma: 0.5
+    trainer:
+        max_epochs: 540
+        val_interval_epoch: 10
+        profiler: null
+    ckpt_log:
+        dir_root: vqcpc_vocoder
+        name_exp: default
+        name_version: version_-1
+data:
+    loader:
         batch_size: 32
-        sample_frames: 32
-        n_steps: 160000
-        optimizer_lr: 4e-4
-        scheduler_milestones:
-            - 50000
-            - 75000
-            - 100000
-            - 125000
-        scheduler_gamma: 0.5
-        checkpoint_interval: 5000
-        n_workers: 8
-resume: NoResume
-checkpoint_dir: checkpoints/vqcpc/version1
-cpc_checkpoint: checkpoints/cpc/english2019/model.ckpt-22000.pt
-vocoder_checkpoint: checkpoints/vocoder/english2019/version1/model.ckpt-xxxxxx.pt
-save_auxiliary: False
-in_dir: zerospeech/2019
-out_dir: results/z2019en
-synthesis_list: ./target_vc.json
+        num_workers: 8
+        pin_memory: null
+    dataset:
+        adress_data_root: null
+        clip_length_mel: 32
+        mel_stft_stride: 160
+        corpus:
+            download: false
+        preprocess:
+            sr: ${sampling_rate}
+            n_fft: 2048
+            n_mels: ${dim_mel_freq}
+            fmin: 50
+            preemph: 0.97
+            top_db: 80
+            # hop_length: local sync
+            win_length: 400
+            bits: ${bit_mulaw}
 """
 
 
@@ -125,18 +136,6 @@ class ConfTrainCPC:
 
 
 @dataclass
-class ConfTrainVocoder:
-    batch_size: int = MISSING
-    sample_frames: int = MISSING
-    n_steps: int = MISSING
-    optimizer_lr: float = MISSING
-    scheduler_milestones: List[int] = MISSING
-    scheduler_gamma: float = MISSING
-    checkpoint_interval: int = MISSING
-    n_workers: int = MISSING
-
-
-@dataclass
 class ConfTraining:
     cpc: ConfTrainCPC = ConfTrainCPC()
     vocoder: ConfTrainVocoder = ConfTrainVocoder()
@@ -146,27 +145,32 @@ class ConfTraining:
 class ConfGlobal:
     """Configuration of everything.
     Args:
-        resume: Resume training from `resume` path
-        checkpoint_dir:
-        cpc_checkpoint:
-        vocoder_checkpoint:
+        seed: Random seed
+        sampling_rate: Audio sampling rate
+        bit_mulaw: Bit depth of mu-law signal
+        dim_mel_freq: Dimension of mel-spectrogram's frequency
+        dim_latent: Dimension of latent vector
+        size_latent_codebook: Codebook size of latent (Number of index)
+        cpc_checkpoint: CPC encoder checkpoint
+        vocoder_checkpoint: RNNMS vocoder checkpoint
         save_auxiliary:
-        in_dir:
-        out_dir:
         synthesis_list:
     """
-    resume: str = MISSING
-    checkpoint_dir: str = MISSING
+    seed: int = MISSING
+    sampling_rate: int = MISSING
+    bit_mulaw: int = MISSING
+    dim_mel_freq: int = MISSING
+    dim_latent: int = MISSING
+    size_latent_codebook: int = MISSING 
     cpc_checkpoint: str = MISSING
     vocoder_checkpoint: str = MISSING
     save_auxiliary: bool = MISSING
-    in_dir: str = MISSING
-    out_dir: str = MISSING
     synthesis_list: str = MISSING
     dataset: ConfDataset = ConfDataset()
     model: ConfModel = ConfModel()
     training: ConfTraining = ConfTraining()
-
+    training_vocoder: ConfTrainVocoder = ConfTrainVocoder()
+    data: ConfData = ConfData()
 
 def conf_default() -> ConfGlobal:
     """Default global configuration.
@@ -180,10 +184,10 @@ def conf_programatic(conf: ConfGlobal) -> ConfGlobal:
     """
     """
     # Target: `conf.model.vocoder.rnnms.dim_i_feature`
-    conf_voc = conf.model.vocoder
+    conf_voc = conf.training_vocoder.model.network
     conf_voc.rnnms.dim_i_feature = conf_voc.in_channels + conf_voc.speaker_embedding_dim
 
-    # Pass
+    # PlaceHolder
 
     return conf
 

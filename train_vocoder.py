@@ -1,157 +1,134 @@
-from pathlib import Path
+from enum import Enum
+from typing import Optional
+import os
+from datetime import timedelta
+from dataclasses import dataclass
 
-from tqdm import tqdm
-import soundfile
 import torch
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.utils.data import DataLoader
+import pytorch_lightning as pl
+from pytorch_lightning import loggers as pl_loggers
+from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.core.datamodule import LightningDataModule
+from pytorch_lightning.utilities.cloud_io import get_filesystem
+from omegaconf import MISSING
 
-from dataset_zr19 import ZR19MulawMelSpkDataset
-from model import Encoder, Vocoder
-from config import load_conf, ConfGlobal
+from model import Encoder
+from vocoder import ConfVocoderModel, VocoderModel
 
 
-# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-def save_checkpoint(decoder, optimizer, scheduler, step, checkpoint_dir):
-    """Save model and learning states.
-    
-    Number in filename indicates global `step`.
+class Profiler(Enum):
+    SIMPLE = "simple"
+    ADVANCED = "advanced"
+
+
+@dataclass
+class ConfTrainer:
+    """Configuration of trainer.
+    Args:
+        max_epochs: Number of maximum training epoch
+        val_interval_epoch: Interval epoch between validation
+        profiler: Profiler setting
     """
-    
-    checkpoint_state = {
-        "vocoder": decoder.state_dict(),
-        "optimizer": optimizer.state_dict(),
-        "scheduler": scheduler.state_dict(),
-        "step": step
-    }
-    checkpoint_dir.mkdir(exist_ok=True, parents=True)
-    checkpoint_path = checkpoint_dir / "model.ckpt-{}.pt".format(step)
-    torch.save(checkpoint_state, checkpoint_path)
-    print("Saved checkpoint: {}".format(checkpoint_path.stem))
-# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    max_epochs: int = MISSING
+    val_interval_epoch: int = MISSING
+    profiler: Optional[Profiler] = MISSING
+
+@dataclass
+class ConfCkptLog:
+    """Configuration of checkpointing and logging.
+    """
+    dir_root: str = MISSING
+    name_exp: str  = MISSING
+    name_version: str  = MISSING
+
+@dataclass
+class ConfTrainVocoder:
+    """Configuration of train.
+    """
+    model: ConfVocoderModel = ConfVocoderModel()
+    trainer: ConfTrainer = ConfTrainer()
+    ckpt_log: ConfCkptLog = ConfCkptLog()
 
 
-def train_model(conf: ConfGlobal):
-    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    checkpoint_dir = Path(conf.checkpoint_dir)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+def train_vocoder(conf: ConfTrainVocoder, datamodule: LightningDataModule, encoder: Encoder) -> None:
+    """Train vocoder
+    """
 
-    encoder = Encoder(conf.model.encoder)
-    vocoder = Vocoder(conf.model.vocoder)
+    ckpt_and_logging = CheckpointAndLogging(
+        conf.ckpt_log.dir_root,
+        conf.ckpt_log.name_exp,
+        conf.ckpt_log.name_version
+    )
 
-    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    encoder.to(device)
-    vocoder.to(device)
-    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    # setup
+    model = VocoderModel(conf.model, encoder)
 
-    # Adam, MultiStepLR
-    optimizer = optim.Adam(
-        vocoder.parameters(),
-        lr=conf.training.vocoder.optimizer_lr)
-    scheduler = optim.lr_scheduler.MultiStepLR(
-        optimizer, milestones=conf.training.vocoder.scheduler_milestones,
-        gamma=conf.training.vocoder.scheduler_gamma)
+    # Save checkpoint as `last.ckpt` every 15 minutes.
+    ckpt_cb = ModelCheckpoint(
+        train_time_interval=timedelta(minutes=15),
+        save_last=True,
+        save_top_k=0,
+    )
 
-    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    if not (conf.resume == "NoResume"):
-        print("Resume checkpoint from: {}:".format(conf.resume))
-        checkpoint = torch.load(conf.resume, map_location=lambda storage, _: storage)
-        vocoder.load_state_dict(checkpoint["vocoder"])
-        optimizer.load_state_dict(checkpoint["optimizer"])
-        scheduler.load_state_dict(checkpoint["scheduler"])
-        global_step: int = checkpoint["step"]
-    else:
-        global_step: int = 0
-    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    trainer = pl.Trainer(
+        gradient_clip_val=1,
+        gpus=1 if torch.cuda.is_available() else 0,
+        auto_select_gpus=True,
+        precision=16,
+        max_epochs=conf.trainer.max_epochs,
+        check_val_every_n_epoch=conf.trainer.val_interval_epoch,
+        # logging/checkpointing
+        resume_from_checkpoint=ckpt_and_logging.resume_from_checkpoint,
+        default_root_dir=ckpt_and_logging.default_root_dir,
+        logger=pl_loggers.TensorBoardLogger(
+            ckpt_and_logging.save_dir, ckpt_and_logging.name, ckpt_and_logging.version
+        ),
+        callbacks=[ckpt_cb],
+        # reload_dataloaders_every_epoch=True,
+        profiler=conf.trainer.profiler,
+        progress_bar_refresh_rate=30
+    )
 
-    # If encoder is used in preprocessing for vocoder, this move to other files.
-    print("Resume cpc encoder from: {}:".format(conf.cpc_checkpoint))
-    checkpoint = torch.load(conf.cpc_checkpoint, map_location=lambda storage, _: storage)
-    encoder.load_state_dict(checkpoint["encoder"])
-    encoder.eval()
-    # /
+    # training
+    trainer.fit(model, datamodule=datamodule)
 
-    # Dataset preparation
-    dataset = ZR19MulawMelSpkDataset(True, conf.dataset)
-    dataset_val = ZR19MulawMelSpkDataset(False, conf.dataset)
-    dataloader = DataLoader(
-        dataset,
-        batch_size=conf.training.vocoder.batch_size,
-        shuffle=True,
-        num_workers=conf.training.vocoder.n_workers,
-        pin_memory=True,
-        drop_last=True)
-    dataloader_val = DataLoader(
-        dataset_val,
-        batch_size=1,
-        shuffle=False)
 
-    dir_sample = Path("./out_sample")
-    dir_sample.mkdir(parents=True, exist_ok=True)
+class CheckpointAndLogging:
+    """Generate path of checkpoint & logging.
+    {dir_root}/
+        {name_exp}/
+            {name_version}/
+                checkpoints/
+                    {name_ckpt} # PyTorch-Lightning Checkpoint. Resume from here.
+                hparams.yaml
+                events.out.tfevents.{xxxxyyyyzzzz} # TensorBoard log file.
+    """
 
-    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    n_epochs = conf.training.vocoder.n_steps // len(dataloader) + 1
-    start_epoch = global_step // len(dataloader) + 1
-    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    # [PL's Trainer](https://pytorch-lightning.readthedocs.io/en/stable/trainer.html#trainer-class-api)
+    default_root_dir: Optional[str]
+    resume_from_checkpoint: Optional[str]
+    # [PL's TensorBoardLogger](https://pytorch-lightning.readthedocs.io/en/stable/logging.html#tensorboard)
+    save_dir: str
+    name: str
+    version: str
+    # [PL's ModelCheckpoint](https://pytorch-lightning.readthedocs.io/en/stable/generated/pytorch_lightning.callbacks.ModelCheckpoint.html#pytorch_lightning.callbacks.ModelCheckpoint)
+    # dirpath: Implicitly inferred from `default_root_dir`, `name` and `version` by PyTorch-Lightning
 
-    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    for epoch in range(start_epoch, n_epochs + 1):
-        ################################ epoch ################################
-        average_loss = 0
-    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    def __init__(
+        self,
+        dir_root: str,
+        name_exp: str = "default",
+        name_version: str = "version_-1",
+        name_ckpt: str = "last.ckpt",
+    ) -> None:
 
-        for i, (audio, mels, speakers) in enumerate(tqdm(dataloader), 1):
-            ############################# step ############################
-            # tqdm report 'step' number in progress bar
+        path_ckpt = os.path.join(dir_root, name_exp, name_version, "checkpoints", name_ckpt)
 
-            # Setup
-            audio, mels, speakers = audio.to(device), mels.to(device), speakers.to(device)
-            optimizer.zero_grad()
+        # PL's Trainer
+        self.default_root_dir = dir_root
+        self.resume_from_checkpoint = path_ckpt if get_filesystem(path_ckpt).exists(path_ckpt) else None
 
-            # This could be done in preprocessing for Vocoder. Isn't it?
-            with torch.no_grad():
-                _, _, indices = encoder.encode(mels)
-            # /
-
-            # Vocoding -> CE loss
-            output = vocoder(audio[:, :-1], indices, speakers)
-            loss = F.cross_entropy(output.transpose(1, 2), audio[:, 1:])
-
-            # Backward / Gradient clipping / Optimize
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(vocoder.parameters(), 1)
-            optimizer.step()
-            scheduler.step()
-
-    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-            average_loss += (loss.item() - average_loss) / i
-            global_step += 1
-            # Checkpointing
-            #   global step based, not epoch based
-            if global_step % conf.training.vocoder.checkpoint_interval == 0:
-                save_checkpoint(
-                    vocoder, optimizer, scheduler, global_step, checkpoint_dir)
-            ############################# step ############################
-        # Logging
-        print("epoch:{}, loss:{:.3E}".format(epoch, average_loss))
-        # Sample generation
-        # Difference mel-spec length, so batch_size=1
-        #   5 min/epoch in P100
-        if epoch % 12 == 0:
-            dl_v = iter(dataloader_val)
-            for i in range(0, 3):
-                _, mels, speakers = next(dl_v)
-                mels, speakers = mels.to(device), speakers.to(device)
-                with torch.no_grad():
-                    _, _, indices = encoder.encode(mels)
-                    # output::float
-                    output = vocoder.generate(indices, speakers).cpu().numpy()[0]
-                soundfile.write(f"{str(dir_sample)}/No{i}_step{global_step}.wav", output, conf.dataset.preprocess.sr)
-        ############################### /epoch ################################
-    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-if __name__ == "__main__":
-    conf = load_conf()
-    train_model(conf)
+        # TB's TensorBoardLogger
+        self.save_dir = dir_root
+        self.name = name_exp
+        self.version = name_version

@@ -44,14 +44,13 @@ model:
         n_speakers: 102
         speaker_embedding_dim: 64
         rnnms:
-            # `dim_i_feature == ..in_channels + ..speaker_embedding_dim` at runtime
-            dim_i_feature: 0
+            # dim_i_feature: programatic synth
             dim_voc_latent: 256
             bits_mu_law: ${dataset.preprocess.bits}
             upsampling_t: ${dataset.preprocess.hop_length}
             prenet:
                 # dim_i: local sync
-                # dim_o: localsync
+                # dim_o: local sync
                 num_layers: 2
                 bidirectional: true
             wave_ar:
@@ -177,6 +176,17 @@ def conf_default() -> ConfGlobal:
         OmegaConf.create(CONF_DEFAULT_STR)
     )
 
+def conf_programatic(conf: ConfGlobal) -> ConfGlobal:
+    """
+    """
+    # Target: `conf.model.vocoder.rnnms.dim_i_feature`
+    conf_voc = conf.model.vocoder
+    conf_voc.rnnms.dim_i_feature = conf_voc.in_channels + conf_voc.speaker_embedding_dim
+
+    # Pass
+
+    return conf
+
 T = TypeVar('T')
 def gen_load_conf(gen_conf_default: Callable[[], T], ) -> Callable[[], T]:
     """Generate 'Load configuration type-safely' function.
@@ -191,9 +201,10 @@ def gen_load_conf(gen_conf_default: Callable[[], T], ) -> Callable[[], T]:
         extends_path = cli.get("path_extend_conf", None)
         if extends_path:
             extends = OmegaConf.load(extends_path)
-            conf_final = OmegaConf.merge(default, extends, cli)
+            conf_merged = OmegaConf.merge(default, extends, cli)
         else:
-            conf_final = OmegaConf.merge(default, cli)
+            conf_merged = OmegaConf.merge(default, cli)
+        conf_final = conf_programatic(conf_merged)
 
         # Design Note -- OmegaConf instance v.s. DataClass instance --
         #   OmegaConf instance has runtime overhead in exchange for type safety.
@@ -216,3 +227,6 @@ def gen_load_conf(gen_conf_default: Callable[[], T], ) -> Callable[[], T]:
 load_conf = gen_load_conf(conf_default)
 """Load configuration type-safely.
 """
+
+if __name__ == "__main__":
+    print(load_conf())

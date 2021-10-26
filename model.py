@@ -3,13 +3,10 @@ import math
 
 from omegaconf.omegaconf import MISSING
 import torch
+from torch.functional import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import Categorical
-from tqdm import tqdm
-import numpy as np
-
-from preprocess import mulaw_decode
+from rnnms.networks.vocoder import ConfRNNMSVocoder, RNNMSVocoder
 
 
 @dataclass
@@ -263,32 +260,16 @@ def get_gru_cell(gru):
 class ConfVocoder:
     """
     Args:
+        in_channels: Dimension of latent vector z (NOT codebook size)
         n_speakers: Number of speakers
         speaker_embedding_dim: Dimension of speaker embedding
-        in_channels: Dimension of latent vector z (NOT codebook size)
-        dim_voc_latent: Dimension of latent between PreNet and WaveRNN
-        upsampling_t: Factor of time-direcitonal latent upsampling (e.g. STFT hop_length)
         bits_mu_law: Depth of quantized bit
-        mu_embedding_dim: Dimension of sample embedding
-        rnn_channels: Dimension of AR-RNN hidden/output
-        fc_channels: Dimension of FC hidden layer
-        bidirectional: Whether use bidirectional PreNet GRU or not
     """
-    # dim_i_feature: int = MISSING
-    # Speaker embedding
+    in_channels: int = MISSING
     n_speakers: int = MISSING
     speaker_embedding_dim: int = MISSING
-    # Vocoder
-    in_channels: int = MISSING
-    dim_voc_latent: int = MISSING
-    upsampling_t: int = MISSING
     bits_mu_law: int = MISSING
-    # PreNet
-    bidirectional: bool = MISSING
-    # AR
-    mu_embedding_dim: int = MISSING
-    rnn_channels: int = MISSING
-    fc_channels: int = MISSING
+    rnnms: ConfRNNMSVocoder = ConfRNNMSVocoder()
 
 class Vocoder(nn.Module):
     """Independently-trained vocoder conditioned on discrete VQ-CPC output.
@@ -299,104 +280,57 @@ class Vocoder(nn.Module):
         """
         """
         super(Vocoder, self).__init__()
-        self.rnn_channels = conf.rnn_channels
-        self.quantization_channels = 2**conf.bits_mu_law
-        self.time_upsampling_factor = conf.upsampling_t
 
-        # Hidden size adjustment: If bidirectional, output dimension become twice
-        layer = 2
-        dim_h_prenet = conf.dim_voc_latent // 2 if conf.bidirectional else conf.dim_voc_latent        
-        bi, uni = "bidirectional", "unidirectional"
-        print(f"PreNet: {layer}-layer { bi if conf.bidirectional else uni } GRU")
-
-        # Discrete code embedding: 512 discrete codes => continuous 64-dim space
-        self.code_embedding = nn.Embedding(512, 64)
-        # Speaker embedding for PreNet
+        # (discrete) Code/Id => (continuous) embedding space
+        self.code_embedding = nn.Embedding(512, conf.in_channels)
         self.speaker_embedding = nn.Embedding(conf.n_speakers, conf.speaker_embedding_dim)
 
-        # PreNet: 2layer bidirection GRU with latent **and speaker embedding**
-        self.rnn1 = nn.GRU(conf.in_channels + conf.speaker_embedding_dim, dim_h_prenet,
-                           num_layers=layer, batch_first=True, bidirectional=conf.bidirectional)
-        # Sample embedding for AR
-        self.mu_embedding = nn.Embedding(self.quantization_channels, conf.mu_embedding_dim)
-        # AR-RNN: AR embedding + latent (bidi output) => hidden/output `rnn_channels`
-        self.rnn2 = nn.GRU(conf.mu_embedding_dim + conf.dim_voc_latent, conf.rnn_channels, batch_first=True)
-        # FC: AR hidden/output => FC hidden `fc_channels` => bit energy `self.quantization_channels`
-        self.fc = nn.Sequential(
-            nn.Linear(conf.rnn_channels, conf.fc_channels),
-            nn.ReLU(),
-            nn.Linear(conf.fc_channels, self.quantization_channels),
-        )
+        # Input feature toward RNN_MS: Content_embedding + Speaker_embedding
+        conf.rnnms.dim_i_feature = conf.in_channels + conf.speaker_embedding_dim
+        self.rnnms = RNNMSVocoder(conf.rnnms)
 
-    def forward(self, x, z, speakers):
+    def forward(self, x: Tensor, z: Tensor, speaker: Tensor):
         """Forward a content representation sequence at once with teacher observation sequence for AR.
         
         Args:
-            x : μ-law encoded observation sequence for AR teacher signal
-            z : Index series of discrete content representation for conditioning
-            speakers :
+            x: μ-law encoded observation sequence for AR teacher signal
+            z: Index series of discrete content representation for conditioning
+            speaker: Speaker ID (discrete value)
         
         Returns:
             Energy distribution of `bits` bit μ-law value
         """
         
         # Content embedding and upsampling
-        z = self.code_embedding(z)
-        z = F.interpolate(z.transpose(1, 2), scale_factor=2)
-        z = z.transpose(1, 2)
+        z_embed = self.code_embedding(z)
+        # (Batch, Time, Embed_z) => (Batch, Embed_z, 2*Time) => (Batch, 2*Time, Embed_z)
+        z_embed_up: Tensor = F.interpolate(z_embed.transpose(1, 2), scale_factor=2).transpose(1, 2)
         # Speaker embedding and upsampling
-        speakers = self.speaker_embedding(speakers)
-        speakers = speakers.unsqueeze(1).expand(-1, z.size(1), -1)
-        latent_series = torch.cat((z, speakers), dim=-1)
+        spk_embed: Tensor = self.speaker_embedding(speaker)
+        # Time-directional copy (keep Batch/dim0 & Embed/dim2 by `-1` flag)
+        # (Batch, Embed_spk) => (Batch, 1, Embed_spk) => (Batch, 2*Time, Embed_spk)
+        spk_embed_up = spk_embed.unsqueeze(1).expand(-1, z_embed_up.size(1), -1)
 
-        # PreNet
-        z, _ = self.rnn1(latent_series)
-        z = F.interpolate(z.transpose(1, 2), scale_factor=self.time_upsampling_factor)
-        conditioning = z.transpose(1, 2)
+        # Input to RNN_MS
+        latent_series = torch.cat((z_embed_up, spk_embed_up), dim=-1)
 
-        # WaveRNN
-        x, _ = self.rnn2(torch.cat((self.mu_embedding(x), conditioning), dim=2))
-        x = self.fc(x)
-        return x
+        return self.rnnms(x, latent_series)
 
-    def generate(self, z, speaker):
+    def generate(self, z: Tensor, speaker: Tensor):
         """Generate utterances from a batch of (latent_code, speaker_index)
         """
 
-        output = []
-        cell = get_gru_cell(self.rnn2)
+        # Content embedding and upsampling
+        z_embed = self.code_embedding(z)
+        z_embed_up: Tensor = F.interpolate(z_embed.transpose(1, 2), scale_factor=2).transpose(1, 2)
+        # Speaker embedding and upsampling
+        spk_embed = self.speaker_embedding(speaker)
+        spk_embed_up = spk_embed.unsqueeze(1).expand(-1, z_embed_up.size(1), -1)
 
-        # Embed & Upsample latent
-        z = self.code_embedding(z)
-        z = F.interpolate(z.transpose(1, 2), scale_factor=2)
-        z = z.transpose(1, 2)
+        # Input to RNN_MS
+        z = torch.cat((z_embed_up, spk_embed_up), dim=-1)
 
-        speaker = self.speaker_embedding(speaker)
-        speaker = speaker.unsqueeze(1).expand(-1, z.size(1), -1)
-
-        z = torch.cat((z, speaker), dim=-1)
-
-        # PreNet
-        z, _ = self.rnn1(z)
-        z = F.interpolate(z.transpose(1, 2), scale_factor=self.time_upsampling_factor)
-        z = z.transpose(1, 2)
-
-        # Sample AR
-        batch_size, sample_size, _ = z.size()
-        h = torch.zeros(batch_size, self.rnn_channels, device=z.device)
-        x = torch.zeros(batch_size, device=z.device).fill_(self.quantization_channels // 2).long()
-        for m in tqdm(torch.unbind(z, dim=1), leave=False):
-            x = self.mu_embedding(x)
-            h = cell(torch.cat((x, m), dim=1), h)
-            logits = self.fc(h)
-            dist = Categorical(logits=logits)
-            x = dist.sample()
-            output.append(2 * x.float().item() / (self.quantization_channels - 1.) - 1.)
-
-        # Linear PMC
-        output = np.asarray(output, dtype=np.float64)
-        output = mulaw_decode(output, self.quantization_channels)
-        return output
+        return self.rnnms.generate(z)
 
 @dataclass
 class ConfModel:

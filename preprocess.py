@@ -18,12 +18,18 @@ def preemphasis(x: ND_FP32, preemph: float) -> ND_FP32:
 
 
 def mulaw_encode(x: ND_FP32, mu: int) -> ND_LONG:
+    """Linear Continuous [-1, 1] => mulaw Discrete [0, mu)
+    """
     mu = mu - 1
+    # Float μ-law representation [-1, 1]
     fx = np.sign(x) * np.log1p(mu * np.abs(x)) / np.log1p(mu)
+    # [0, 2] => [0, 1] => [0, mu] => discrete Z [0, mu] (0<=x<1 => 1)
     return np.floor((fx + 1) / 2 * mu + 0.5)
 
 
-def mulaw_decode(y: ND_LONG, mu: int) -> ND_FP32:
+def mulaw_decode(y: ND_FP32, mu: int) -> ND_FP32:
+    """mulaw [-1, 1] => linear continous [-1, 1]
+    """
     mu = mu - 1
     x = np.sign(y) / mu * ((1 + mu) ** np.abs(y) - 1)
     return x

@@ -40,16 +40,27 @@ model:
         c_dim: ${model.encoder.c_dim}
     vocoder:
         in_channels: ${model.encoder.z_dim}
-        dim_voc_latent: 256
-        upsampling_t: ${dataset.preprocess.hop_length}
-        bits_mu_law: ${dataset.preprocess.bits}
-        n_speakers: 102
         # todo: Fix n_speakers dependency. Now this is not hardcoded.
+        n_speakers: 102
         speaker_embedding_dim: 64
-        bidirectional: true
-        mu_embedding_dim: 256
-        rnn_channels: 896
-        fc_channels: 256
+        bits_mu_law: ${dataset.preprocess.bits}
+        rnnms:
+            # `dim_i_feature == ..in_channels + ..speaker_embedding_dim` at runtime
+            dim_i_feature: 0
+            dim_voc_latent: 256
+            bits_mu_law: int = MISSING
+            upsampling_t: ${dataset.preprocess.hop_length}
+            prenet:
+                # dim_i: local sync
+                # dim_o: localsync
+                num_layers: 2
+                bidirectional: true
+            wave_ar:
+                # size_i_cnd: local sync
+                size_i_embed_ar: 256
+                size_h_rnn: 896
+                size_h_fc: 256
+                # size_o_bit: local sync
 training:
     cpc:
         sample_frames: 128

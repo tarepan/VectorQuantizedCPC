@@ -139,7 +139,6 @@ class ConfTrainCPC:
 @dataclass
 class ConfTraining:
     cpc: ConfTrainCPC = ConfTrainCPC()
-    vocoder: ConfTrainVocoder = ConfTrainVocoder()
 
 
 @dataclass
@@ -163,11 +162,11 @@ class ConfGlobal:
     dim_mel_freq: int = MISSING
     size_latent_codebook: int = MISSING 
     dim_latent: int = MISSING
+    dim_cpc_context: int = MISSING
     cpc_checkpoint: str = MISSING
     vocoder_checkpoint: str = MISSING
     save_auxiliary: bool = MISSING
     synthesis_list: str = MISSING
-    dataset: ConfDataset = ConfDataset()
     model: ConfModel = ConfModel()
     training: ConfTraining = ConfTraining()
     training_vocoder: ConfTrainVocoder = ConfTrainVocoder()

@@ -56,11 +56,11 @@ training:
 training_vocoder:
     model:
         sampling_rate: ${sampling_rate}
+        # todo: Fix n_speakers dependency. Now this is not hardcoded.
+        n_speakers: 102
         network:
             size_i_codebook: ${size_latent_codebook}
             dim_i_embedding: ${dim_latent}
-            # todo: Fix n_speakers dependency. Now this is not hardcoded.
-            n_speakers: 102
             dim_speaker_embedding: 64
             rnnms:
                 dim_voc_latent: 256

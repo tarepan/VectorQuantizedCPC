@@ -32,7 +32,8 @@ class ConfVocoderModel:
         sampling_rate: Output audio sampling rate
     """
     sampling_rate: int = MISSING
-    network: ConfVocoder = ConfVocoder()
+    n_speakers: int = MISSING
+    network: ConfVocoder = ConfVocoder(n_speakers="${..n_speakers}")
     optim: ConfOptim = ConfOptim()
 
 class VocoderModel(pl.LightningModule):
@@ -45,6 +46,7 @@ class VocoderModel(pl.LightningModule):
         self.conf = conf
         self.model = Vocoder(conf.network)
         self.encoder = encoder
+        self.spk_increment: int = 5
 
     def training_step(self, batch: Tuple[Tensor, Tensor, Tensor], _):
         """Supervised learning.
@@ -69,13 +71,23 @@ class VocoderModel(pl.LightningModule):
 
         _, mel_series, speaker = batch
         _, _, indice_series = self.encoder.encode(mel_series)
-        wave_linear = self.model.generate(indice_series, speaker)
+        wave_linear_reconst = self.model.generate(indice_series, speaker)
+        spk_target_vc = (speaker + self.spk_increment) % self.conf.n_speakers
+        wave_linear_vc = self.model.generate(indice_series, spk_target_vc)
 
+        idx_spk_src = speaker.item()
+        idx_spk_tgt = spk_target_vc.item()
         # [PyTorch](https://pytorch.org/docs/stable/tensorboard.html#torch.utils.tensorboard.writer.SummaryWriter.add_audio)
         # add_audio(tag: str, snd_tensor: Tensor(1, L), global_step: Optional[int] = None, sample_rate: int = 44100)
         self.logger.experiment.add_audio(
-            f"audio_{batch_idx}",
-            wave_linear,
+            f"spk_{idx_spk_src}",
+            wave_linear_reconst,
+            global_step=self.global_step,
+            sample_rate=self.conf.sampling_rate,
+        )
+        self.logger.experiment.add_audio(
+            f"{idx_spk_src}_to_{idx_spk_tgt}",
+            wave_linear_vc,
             global_step=self.global_step,
             sample_rate=self.conf.sampling_rate,
         )

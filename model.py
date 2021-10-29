@@ -41,7 +41,8 @@ class Encoder(nn.Module):
         # Conv1d/k4s2
         self.conv = nn.Conv1d(conf.in_channels, conf.channels, 4, 2, 1, bias=False)
         # Segmental FC layer: LN-ReLU-[FC-LN-ReLU]x4-FC
-        self.seg_fc = nn.Sequential(
+        # Change name break PyTorch checkpoint. Be careful. `seg_fc` is better name in future.
+        self.encoder = nn.Sequential(
             nn.LayerNorm(conf.channels),
             nn.ReLU(True),
             *repeat_modules(lambda : [
@@ -62,14 +63,14 @@ class Encoder(nn.Module):
         """
         z = self.conv(mel)
         # [Batch, Feature, Time] => [Batch, Time, Feature] => (FC in Feature dim)
-        z = self.seg_fc(z.transpose(1, 2))
+        z = self.encoder(z.transpose(1, 2))
         z, indices = self.codebook.encode(z)
         c, _ = self.rnn(z)
         return z, c, indices
 
     def forward(self, mels: Tensor):
         z = self.conv(mels)
-        z = self.seg_fc(z.transpose(1, 2))
+        z = self.encoder(z.transpose(1, 2))
         z, loss, perplexity = self.codebook(z)
         c, _ = self.rnn(z)
         return z, c, loss, perplexity

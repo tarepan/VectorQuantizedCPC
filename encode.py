@@ -37,7 +37,7 @@ def encode_dataset(cfg: ConfGlobal):
         def hook(module, input, output):
             auxiliary.append(output.clone())
 
-        encoder.seg_fc[-1].register_forward_hook(hook)
+        encoder.encoder[-1].register_forward_hook(hook)
 
     for _, _, _, path in tqdm(metadata):
         path = root_path.parent / path

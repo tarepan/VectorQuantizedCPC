@@ -1,12 +1,16 @@
 from dataclasses import dataclass
-import math
-from typing import Tuple
+from itertools import chain
+from typing import Callable, List, Tuple
 
 from omegaconf.omegaconf import MISSING
 import torch
 from torch.functional import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+def repeat_modules(atom_gen: Callable[[], List[nn.Module]], n_repeat: int) -> List[nn.Module]:
+    return list(chain.from_iterable([atom_gen() for _ in range(0, n_repeat)]))
 
 
 @dataclass
@@ -36,27 +40,15 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         # Conv1d/k4s2
         self.conv = nn.Conv1d(conf.in_channels, conf.channels, 4, 2, 1, bias=False)
-        # LN-ReLU-[FC-LN-ReLU]x4-FC
-        self.encoder = nn.Sequential(
+        # Segmental FC layer: LN-ReLU-[FC-LN-ReLU]x4-FC
+        self.seg_fc = nn.Sequential(
             nn.LayerNorm(conf.channels),
             nn.ReLU(True),
-            #
-            nn.Linear(conf.channels, conf.channels, bias=False),
-            nn.LayerNorm(conf.channels),
-            nn.ReLU(True),
-            #
-            nn.Linear(conf.channels, conf.channels, bias=False),
-            nn.LayerNorm(conf.channels),
-            nn.ReLU(True),
-            #
-            nn.Linear(conf.channels, conf.channels, bias=False),
-            nn.LayerNorm(conf.channels),
-            nn.ReLU(True),
-            #
-            nn.Linear(conf.channels, conf.channels, bias=False),
-            nn.LayerNorm(conf.channels),
-            nn.ReLU(True),
-            #
+            *repeat_modules(lambda : [
+                nn.Linear(conf.channels, conf.channels, bias=False),
+                nn.LayerNorm(conf.channels),
+                nn.ReLU(True)
+            ], 4),
             nn.Linear(conf.channels, conf.z_dim),
         )
         self.codebook = VQEmbeddingEMA(conf.n_embeddings, conf.z_dim)
@@ -69,14 +61,15 @@ class Encoder(nn.Module):
             (z, c, indices): latent vector series, context vector series, latent index series
         """
         z = self.conv(mel)
-        z = self.encoder(z.transpose(1, 2))
+        # [Batch, Feature, Time] => [Batch, Time, Feature] => (FC in Feature dim)
+        z = self.seg_fc(z.transpose(1, 2))
         z, indices = self.codebook.encode(z)
         c, _ = self.rnn(z)
         return z, c, indices
 
-    def forward(self, mels):
+    def forward(self, mels: Tensor):
         z = self.conv(mels)
-        z = self.encoder(z.transpose(1, 2))
+        z = self.seg_fc(z.transpose(1, 2))
         z, loss, perplexity = self.codebook(z)
         c, _ = self.rnn(z)
         return z, c, loss, perplexity

@@ -68,7 +68,6 @@ class Vocoder(nn.Module):
         """Generate utterances from a batch of (latent_code, speaker_index)
         """
 
-        # Content/Speaker embedding and upsampling
         z_embed = self.code_embedding(z)
         z_embed_up: Tensor = F.interpolate(z_embed.transpose(1, 2), scale_factor=2).transpose(1, 2)
         spk_embed = self.speaker_embedding(speaker)

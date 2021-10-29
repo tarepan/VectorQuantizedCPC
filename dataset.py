@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 import random
+from typing import List
 
 import numpy as np
 import torch
@@ -13,8 +14,8 @@ class CPCDataset(Dataset):
         self.n_sample_frames = n_sample_frames
         self.n_utterances_per_speaker = n_utterances_per_speaker
 
-        with open(self.root / "speakers.json") as file:
-            self.speakers = sorted(json.load(file))
+        # with open(self.root / "speakers.json") as file:
+        #     self.speakers = sorted(json.load(file))
 
         min_duration = n_sample_frames * hop_length / sr
         with open(self.root / "train.json") as file:
@@ -38,16 +39,18 @@ class CPCDataset(Dataset):
         Returns:
             (spec, speaker_index)
         """
+        # speaker_name, List[Path of utterance]
         speaker, paths = self.metadata[index]
 
         mels = list()
-        paths = random.sample(paths, self.n_utterances_per_speaker)
+        paths: List[Path] = random.sample(paths, self.n_utterances_per_speaker)
+        # Stack clipped mel-spec of a utterance
         for path in paths:
-            path = self.root.parent / path
-            mel = np.load(path.with_suffix(".mel.npy"))
+            mel = np.load((self.root.parent / path).with_suffix(".mel.npy"))
             pos = random.randint(0, mel.shape[1] - self.n_sample_frames)
             mel = mel[:, pos:pos + self.n_sample_frames]
             mels.append(mel)
         mels = np.stack(mels)
 
+        # (Utterance, Freq, T_clipped) from single speaker
         return torch.from_numpy(mels), self.speakers.index(speaker)

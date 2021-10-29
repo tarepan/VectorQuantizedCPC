@@ -86,7 +86,7 @@ class VocoderModel(pl.LightningModule):
             sample_rate=self.conf.sampling_rate,
         )
         self.logger.experiment.add_audio(
-            f"{idx_spk_src}_to_{idx_spk_tgt}",
+            f"spk_{idx_spk_src}_to_{idx_spk_tgt}",
             wave_linear_vc,
             global_step=self.global_step,
             sample_rate=self.conf.sampling_rate,

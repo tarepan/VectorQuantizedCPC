@@ -1,7 +1,7 @@
 <div align="center">
 
 # Vector-Quantized Contrastive Predictive Coding <!-- omit in toc -->
-<!-- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)][notebook] -->
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)][notebook]
 [![Paper](http://img.shields.io/badge/paper-arxiv.2005.09409-B31B1B.svg)][paper]  
 
 </div>

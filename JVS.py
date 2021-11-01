@@ -1,5 +1,5 @@
 from ZR19 import ConfCorpus
-from typing import List, NamedTuple
+from typing import List, NamedTuple, Tuple
 from pathlib import Path
 
 from corpuspy.interface import AbstractCorpus
@@ -89,7 +89,16 @@ class JVS(AbstractCorpus[ItemIdJVS]):
         #   Corpus handler can be used without corpus itself (e.g. Get item identities for a preprocessed dataset).
         #   Hard-coded identity list enable contents-independent identity acquisition.
 
-        ids: List[ItemIdJVS] = [ItemIdJVS("parallel100", spk, utt) for utt in range(1, 101) for spk in range(1, 101)]
+        # Items which should be excluded. (spk, serial_num)
+        excluded: List[Tuple[int, int]] = [
+            (30, 45), (74, 94), (89, 19), # Missing
+            (9, 95), # 0sec length
+            (98, 60), (98, 99), # contain cough
+        ]
+        candidates: List[ItemIdJVS] = [ItemIdJVS("parallel100", spk, utt) for utt in range(1, 101) for spk in range(1, 101)]
+        ids = list(filter(lambda candidate: all([
+            not (candidate.speaker == rm[0] and candidate.serial_num == rm[1]) for rm in excluded
+        ]), candidates))
         return ids
 
     def get_item_path(self, id: ItemIdJVS) -> Path:

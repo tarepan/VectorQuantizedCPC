@@ -4,6 +4,7 @@ from pathlib import Path
 
 from corpuspy.interface import AbstractCorpus
 from corpuspy.helper.contents import get_contents
+from corpuspy.helper.forward import forward_from_GDrive
 import fsspec
 
 
@@ -49,7 +50,7 @@ class JVS(AbstractCorpus[ItemIdJVS]):
         self._corpus_name: str = f"jvs_ver1"
         archive_name = f"{self._corpus_name}.zip"
 
-        self._origin_adress = f"gdrive-so-need-your-hand"
+        self._origin_content_id = "19oAw8wWn3Y7z6CKChRdAyGOB9yupL_Xt"
 
         mirror_root = conf.mirror_root
         # Directory to which contents are extracted, and mirror is placed if adress is not provided.
@@ -73,7 +74,7 @@ class JVS(AbstractCorpus[ItemIdJVS]):
         """Forward original corpus archive to the mirror adress.
         """
 
-        forward_from_general(self._origin_adress, self._adress_mirror)
+        forward_from_GDrive(self._origin_content_id, self._adress_mirror, 3.29)
 
     def get_identities(self) -> List[ItemIdJVS]:
         """Get corpus item identities.

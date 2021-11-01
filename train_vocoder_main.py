@@ -15,9 +15,9 @@ if __name__ == "__main__":
     torchaudio.set_audio_backend("sox_io")
 
     # Dataset
-    if conf.dataset_name is "ZR19":
+    if conf.dataset_name == "ZR19":
         datamodule = ZR19enDataModule(conf.data)
-    elif conf.dataset_name is "JVS":
+    elif conf.dataset_name == "JVS":
         datamodule = JVSjaDataModule(conf.data)
     else:
         raise Exception(f"Dataset {conf.dataset_name} is not supported.")

@@ -4,7 +4,7 @@ import torchaudio
 
 from config import load_conf
 from model import Encoder
-from datamodule import ZR19enDataModule
+from datamodule import ZR19enDataModule, JVSjaDataModule
 from train_vocoder import train_vocoder
 
 
@@ -15,7 +15,12 @@ if __name__ == "__main__":
     torchaudio.set_audio_backend("sox_io")
 
     # Dataset
-    datamodule = ZR19enDataModule(conf.data)
+    if conf.dataset_name is "ZR19":
+        datamodule = ZR19enDataModule(conf.data)
+    elif conf.dataset_name is "JVS":
+        datamodule = JVSjaDataModule(conf.data)
+    else:
+        raise Exception(f"Dataset {conf.dataset_name} is not supported.")
 
     # Pre-trained Encoder
     encoder = Encoder(conf.model.encoder)

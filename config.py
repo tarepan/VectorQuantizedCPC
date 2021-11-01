@@ -17,6 +17,7 @@ dim_mel_freq: 80
 size_latent_codebook: 512 
 dim_latent: 64
 dim_cpc_context: 256
+dataset_name: ZR19
 cpc_checkpoint: checkpoints/cpc/english2019/model.ckpt-22000.pt
 vocoder_checkpoint: checkpoints/vocoder/english2019/version1/model.ckpt-xxxxxx.pt
 save_auxiliary: False
@@ -163,6 +164,7 @@ class ConfGlobal:
     size_latent_codebook: int = MISSING 
     dim_latent: int = MISSING
     dim_cpc_context: int = MISSING
+    dataset_name: str = MISSING
     cpc_checkpoint: str = MISSING
     vocoder_checkpoint: str = MISSING
     save_auxiliary: bool = MISSING

@@ -40,6 +40,8 @@ class Vocoder(nn.Module):
 
     def forward(self, x: Tensor, z: Tensor, speaker: Tensor):
         """Forward a content representation sequence at once with teacher observation sequence for AR.
+
+        Latent code and speaker ID are embedded, upsampled x2, then go to RNNMS.
         
         Args:
             x: μ-law encoded observation sequence for AR teacher signal

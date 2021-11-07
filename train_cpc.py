@@ -81,6 +81,7 @@ def train_model(cfg: ConfGlobal):
 
     # Dataset
     root_path = Path(utils.to_absolute_path("datasets")) / cfg.dataset.path
+    # Item: (Utterance, Freq, T_clipped) from single speaker
     dataset = CPCDataset(
         root=root_path,
         n_sample_frames=cfg.training.sample_frames + cfg.training.n_prediction_steps,
@@ -88,6 +89,7 @@ def train_model(cfg: ConfGlobal):
         hop_length=cfg.preprocessing.hop_length,
         sr=cfg.preprocessing.sr)
 
+    # Batch: (Speaker, Utterance, Freq, T_clipped)
     dataloader = DataLoader(
         dataset,
         batch_size=cfg.training.n_speakers_per_batch,
@@ -106,14 +108,19 @@ def train_model(cfg: ConfGlobal):
 
         for i, (mels, _) in enumerate(tqdm(dataloader), 1):
             ############################# step ############################
+            # mels::(Speaker, Utterance, Freq, T_clipped)
             mels = mels.to(device)
+            # As batch of clipped mel-spectrogram (No distinguish between speakers and utterances)
+            # (Spk*Utt, Freq, T_clipped)
             mels = mels.view(
-                cfg.training.n_speakers_per_batch *
-                cfg.training.n_utterances_per_speaker,
-                cfg.preprocessing.n_mels, -1)
+                cfg.training.n_speakers_per_batch * cfg.training.n_utterances_per_speaker,
+                cfg.preprocessing.n_mels,
+                -1
+            )
 
             optimizer.zero_grad()
 
+            # (Spk*Utt, Freq, T_clipped) => (Spk*Utt, Time, Feature)
             z, c, vq_loss, perplexity = encoder(mels)
             cpc_loss, accuracy = cpc(z, c)
             loss = cpc_loss + vq_loss

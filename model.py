@@ -69,8 +69,17 @@ class Encoder(nn.Module):
         return z, c, indices
 
     def forward(self, mels: Tensor):
+        """
+        Args:
+            mels (Batch=Spk*Utt, Freq, T_clipped): Mel-spectrogram
+        Returns:
+            (Acoustic Unit, Context, vq_loss, perplexity)
+        """
+        # (Batch, Freq, Time) => (Batch, Feature, Time)
         z = self.conv(mels)
+        # SegFC: (Batch, Feature, Time) => (Batch, Time, Feature) => (Batch, Time, Feature)
         z = self.encoder(z.transpose(1, 2))
+        # ? (Batch, Time, Feature) => (Batch, Time, Feature)
         z, loss, perplexity = self.codebook(z)
         c, _ = self.rnn(z)
         return z, c, loss, perplexity
@@ -105,6 +114,11 @@ class VQEmbeddingEMA(nn.Module):
         return quantized, indices.view(x.size(0), x.size(1))
 
     def forward(self, x):
+        """
+        Args:
+            x (Batch, Time, Feature): Feature time-series
+        """
+
         M, D = self.embedding.size()
         x_flat = x.detach().reshape(-1, D)
 
@@ -112,7 +126,7 @@ class VQEmbeddingEMA(nn.Module):
                                 torch.sum(x_flat ** 2, dim=1, keepdim=True),
                                 x_flat, self.embedding.t(),
                                 alpha=-2.0, beta=1.0)
-
+        # Quantization?
         indices = torch.argmin(distances.float(), dim=-1)
         encodings = F.one_hot(indices, M).float()
         quantized = F.embedding(indices, self.embedding)
@@ -150,7 +164,24 @@ class ConfCPC:
     c_dim: int = MISSING
 
 class CPCLoss(nn.Module):
-    def __init__(self, n_speakers_per_batch, n_utterances_per_speaker, n_prediction_steps, n_negatives, z_dim, c_dim):
+    def __init__(
+        self,
+        n_speakers_per_batch: int,
+        n_utterances_per_speaker: int,
+        n_prediction_steps: int,
+        n_negatives: int,
+        z_dim: int,
+        c_dim: int
+    ):
+        """
+        Args:
+            n_speakers_per_batch: Number of speaker per batch
+            n_utterances_per_speaker: Number of utterance per speaker in a batch
+            n_prediction_steps: Number of CPC prediction step
+            n_negatives: Number of contrastive negatives
+            z_dim: Dimension of acoustic unit
+            c_dim: Dimension of context
+        """
         super(CPCLoss, self).__init__()
         self.n_speakers_per_batch = n_speakers_per_batch
         self.n_utterances_per_speaker = n_utterances_per_speaker
@@ -158,45 +189,80 @@ class CPCLoss(nn.Module):
         self.n_negatives = n_negatives
         self.z_dim = z_dim
         self.c_dim = c_dim
+        # Linear predictor for each future steps
+        # todo: Check `n_prediction_steps`, half of predictors not used?
         self.predictors = nn.ModuleList([
             nn.Linear(c_dim, z_dim) for _ in range(n_prediction_steps)
         ])
 
-    def forward(self, z, c):
+    def forward(self, z: Tensor, c: Tesnor):
+        """
+        Execute Contrastive Predictive Coding.
+
+        All uttrances are used for anchor, except for last n_pred frame (no positives).
+        It results in `Spk * Utt * (MelClip-n_pred) * n_pred` positives per batch.
+        Args:
+            z (Spk*Utt, Time, FeatureZ): Acoustic Unit
+            c (Spk*Utt, Time, FeatureC): Context
+        """
+        # L = Time - self.n_prediction_steps
         length = z.size(1) - self.n_prediction_steps
 
+        # (Spk*Utt, Time, FeatureZ) => (Spk, Utt, Time, FeatureZ)
         z = z.reshape(
             self.n_speakers_per_batch,
             self.n_utterances_per_speaker,
             -1,
             self.z_dim
         )
+        # Context which have enough number of future z (k steps)
+        # (Spk*Utt, Time, FeatureC) => (Spk*Utt, Time=L, FeatureC)
         c = c[:, :-self.n_prediction_steps, :]
 
         losses, accuracies = list(), list()
         for k in range(1, self.n_prediction_steps+1):
-            z_shift = z[:, :, k:length + k, :]
+            # ========================== CPC@t+k ==========================
 
-            Wc = self.predictors[k-1](c)
-            Wc = Wc.view(
+            # ============ Positive series ============
+            # Positives for +k future predictions
+            # (Spk, Utt, Time=L, FeatureZ)
+            z_shift = z[:, :, k:length + k, :]
+            # ============ /Positive series ===========
+
+            # ============= Anchor series =============
+            # Anchor: t+k Future Prediction of t=[0, L-1]
+            # `Wc`: linear transformation `W` of context `c`
+            # (Spk*Utt, Time=L, FeatureC) => (Spk*Utt, Time=L, FeatureZ) => (Spk, Utt, Time=L, FeatureZ)
+            Wc = self.predictors[k-1](c).view(
                 self.n_speakers_per_batch,
                 self.n_utterances_per_speaker,
                 -1,
                 self.z_dim
             )
+            # ============= /Anchor series ============
 
-            batch_index = torch.randint(
+            # ============ Negatives series ===========
+            # Sample negatives by array indexing.
+            # Tricky access through 'multi-dimensional arrays with multi-dimensional index arrays'
+            # [numpy](https://numpy.org/doc/stable/user/basics.indexing.html#indexing-multi-dimensional-arrays)
+
+            # Speaker Index: *within-speaker* negative sampling
+            #   (Spk,   1,   1, 1) reshaped from [0, 1, ..., n_spk-1]
+            speaker_index = torch.arange(self.n_speakers_per_batch, device=z.device).view(-1, 1, 1, 1)
+
+            # Utterance index: "negative examples drawn from other utterances" from original paper
+            #   Each utterances work as a positive, and one positive has `Neg` negatives.
+            #     Current implementation could draw 'themselfs', is it negligible practically?
+            #       False 'super hard negative' could influence strongly, is't it?
+            #   (  1, Utt, Neg, 1) random sampled from [0, n_utt)
+            utt_index = torch.randint(
                 0, self.n_utterances_per_speaker,
-                size=(
-                    self.n_utterances_per_speaker,
-                    self.n_negatives
-                ),
+                size=(self.n_utterances_per_speaker, self.n_negatives),
                 device=z.device
-            )
-            batch_index = batch_index.view(
-                1, self.n_utterances_per_speaker, self.n_negatives, 1
-            )
+            ).view(1, self.n_utterances_per_speaker, self.n_negatives, 1)
 
+            # Seq index: Position in a utterance for a negative sample
+            #   (Spk, Utt, Neg, L) random sampled from [1, length) + some shift
             seq_index = torch.randint(
                 1, length,
                 size=(
@@ -207,35 +273,51 @@ class CPCLoss(nn.Module):
                 ),
                 device=z.device
             )
+            # Add [0, 1, ..., length-1] to last dim
             seq_index += torch.arange(length, device=z.device)
+            # %length: some value out of range by `[1, length) + 0~(length-1)`
             seq_index = torch.remainder(seq_index, length)
 
-            speaker_index = torch.arange(self.n_speakers_per_batch, device=z.device)
-            speaker_index = speaker_index.view(-1, 1, 1, 1)
+            # Negatives      (Spk, Utt, Neg, Time, FeatureZ)
+            #   Generate new tensor by indexing.
+            #   Neg dim is introduced and FeatureZ is kept with partial indexing.
+            #   Below is index list.
+            #       z_shift        (Spk, Utt, Time=L, FeatureZ)
+            #       speaker_index  (Spk,   1,   1, 1): Reshaped [0, 1, ..., Spk-1]
+            #       utt_index      (1,   Utt, Neg, 1): Random [0, n_utt)
+            #       seq_index:     (Spk, Utt, Neg, L): Random [1, length) then shift 0~L-1
+            z_negatives = z_shift[speaker_index, utt_index, seq_index, :]
+            # ============ /Negatives series ==========
 
-            z_negatives = z_shift[speaker_index, batch_index, seq_index, :]
-
+            # Concatenate positive series and negatives series
+            # (Spk, Utt, 1+Neg, Time=L, FeatureZ)
             zs = torch.cat((z_shift.unsqueeze(2), z_negatives), dim=2)
 
-            f = torch.sum(zs * Wc.unsqueeze(2) / math.sqrt(self.z_dim), dim=-1)
-            f = f.view(
+            # Dot-product Similarities
+            # (Spk, Utt, 1+Neg, Time=L, FeatureZ) => (Spk, Utt, 1+Neg, Time=L) => (Spk*Utt, 1+Neg, Time=L)
+            f = torch.sum(zs * Wc.unsqueeze(2) / math.sqrt(self.z_dim), dim=-1).view(
                 self.n_speakers_per_batch * self.n_utterances_per_speaker,
                 self.n_negatives + 1,
                 -1
             )
 
+            # Index of positive, it is always `0` because of cat(pos, negs)
+            # (Spk*Utt, L) = 0
             labels = torch.zeros(
                 self.n_speakers_per_batch * self.n_utterances_per_speaker, length,
                 dtype=torch.long, device=z.device
             )
 
+            # Similarities => Final InfoNCE Loss
             loss = F.cross_entropy(f, labels)
 
             accuracy = f.argmax(dim=1) == labels
             accuracy = torch.mean(accuracy.float())
 
+            # Stack results of t+k
             losses.append(loss)
             accuracies.append(accuracy.item())
+            # ========================== /CPC@t+k =========================
 
         loss = torch.stack(losses).mean()
         return loss, accuracies

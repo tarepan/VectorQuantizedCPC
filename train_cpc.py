@@ -40,8 +40,8 @@ def train_model(cfg: ConfGlobal):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    encoder = Encoder(**cfg.model.encoder)
-    cpc = CPCLoss(**cfg.model.cpc)
+    encoder = Encoder(cfg.model.encoder)
+    cpc = CPCLoss(cfg.model.cpc)
 
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     encoder.to(device)
@@ -76,7 +76,7 @@ def train_model(cfg: ConfGlobal):
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     # Item: (Utterance, Freq, T_clipped) from single speaker
-    dataset = ZR19CPCMelSpkDataset(cfg.data.dataset.cpc)
+    dataset = ZR19CPCMelSpkDataset(True, cfg.data.dataset.cpc)
 
     # Batch: (Speaker, Utterance, Freq, T_clipped)
     dataloader = DataLoader(

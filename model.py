@@ -164,15 +164,7 @@ class ConfCPC:
     c_dim: int = MISSING
 
 class CPCLoss(nn.Module):
-    def __init__(
-        self,
-        n_speakers_per_batch: int,
-        n_utterances_per_speaker: int,
-        n_prediction_steps: int,
-        n_negatives: int,
-        z_dim: int,
-        c_dim: int
-    ):
+    def __init__(self, conf: ConfCPC):
         """
         Args:
             n_speakers_per_batch: Number of speaker per batch
@@ -183,16 +175,16 @@ class CPCLoss(nn.Module):
             c_dim: Dimension of context
         """
         super(CPCLoss, self).__init__()
-        self.n_speakers_per_batch = n_speakers_per_batch
-        self.n_utterances_per_speaker = n_utterances_per_speaker
-        self.n_prediction_steps = n_prediction_steps // 2
-        self.n_negatives = n_negatives
-        self.z_dim = z_dim
-        self.c_dim = c_dim
+        self.n_speakers_per_batch = conf.n_speakers_per_batch
+        self.n_utterances_per_speaker = conf.n_utterances_per_speaker
+        self.n_prediction_steps = conf.n_prediction_steps // 2
+        self.n_negatives = conf.n_negatives
+        self.z_dim = conf.z_dim
+        self.c_dim = conf.c_dim
         # Linear predictor for each future steps
         # todo: Check `n_prediction_steps`, half of predictors not used?
         self.predictors = nn.ModuleList([
-            nn.Linear(c_dim, z_dim) for _ in range(n_prediction_steps)
+            nn.Linear(conf.c_dim, conf.z_dim) for _ in range(conf.n_prediction_steps)
         ])
 
     def forward(self, z: Tensor, c: Tensor):

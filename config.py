@@ -22,6 +22,8 @@ cpc_checkpoint: checkpoints/cpc/english2019/model.ckpt-22000.pt
 vocoder_checkpoint: checkpoints/vocoder/english2019/version1/model.ckpt-xxxxxx.pt
 save_auxiliary: False
 synthesis_list: ./target_vc.json
+checkpoint_dir: ./ckpt
+resume: scratch
 model:
     encoder:
         in_channels: ${dim_mel_freq}
@@ -156,6 +158,8 @@ class ConfGlobal:
         vocoder_checkpoint: RNNMS vocoder checkpoint
         save_auxiliary:
         synthesis_list:
+        checkpoint_dir: Path of checkpoint directory
+        resume: Path of resume checkpoint
     """
     seed: int = MISSING
     sampling_rate: int = MISSING
@@ -169,6 +173,8 @@ class ConfGlobal:
     vocoder_checkpoint: str = MISSING
     save_auxiliary: bool = MISSING
     synthesis_list: str = MISSING
+    checkpoint_dir: str = MISSING
+    resume: str = MISSING
     model: ConfModel = ConfModel()
     training: ConfTraining = ConfTraining()
     training_vocoder: ConfTrainVocoder = ConfTrainVocoder()

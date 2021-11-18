@@ -7,7 +7,7 @@ import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from dataset import CPCDataset
+from dataset import ZR19CPCMelSpkDataset
 from scheduler import WarmupScheduler
 from model import Encoder, CPCLoss
 from config import load_conf, ConfGlobal
@@ -75,15 +75,8 @@ def train_model(cfg: ConfGlobal):
         start_epoch = 1
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    # Dataset
-    root_path = Path("datasets") / cfg.dataset.path
     # Item: (Utterance, Freq, T_clipped) from single speaker
-    dataset = CPCDataset(
-        root=root_path,
-        n_sample_frames=cfg.training.cpc.sample_frames + cfg.training.cpc.n_prediction_steps,
-        n_utterances_per_speaker=cfg.training.cpc.n_utterances_per_speaker,
-        hop_length=cfg.dataset.preprocess.hop_length,
-        sr=cfg.dataset.preprocess.sr)
+    dataset = ZR19CPCMelSpkDataset(cfg.data.dataset.cpc)
 
     # Batch: (Speaker, Utterance, Freq, T_clipped)
     dataloader = DataLoader(

@@ -13,6 +13,7 @@ from numpy import load
 import librosa
 
 from ZR19 import ConfCorpus, ItemIdZR19, ZR19
+from dataset import ConfCPCDataset
 from preprocess import ConfPreprocessing, process_to_mel_mu
 
 import numpy.typing as npt
@@ -52,6 +53,13 @@ class ConfDataset:
     mel_stft_stride: int = MISSING
     corpus: ConfCorpus = ConfCorpus(mirror_root="${..adress_data_root}")
     preprocess: ConfPreprocessing = ConfPreprocessing(hop_length="${..mel_stft_stride}")
+    cpc: ConfCPCDataset = ConfCPCDataset(
+        adress_data_root="${..adress_data_root}",
+        mel_stft_stride="${..mel_stft_stride}",
+        corpus="${..corpus}",
+        preprocess="${..preprocess}",
+    )
+
 
 class ZR19MulawMelSpkDataset(Dataset[Datum_ZR19]):
     """Audio mu_law_wave/mel_spec/speaker_index dataset from ZR19 corpus.

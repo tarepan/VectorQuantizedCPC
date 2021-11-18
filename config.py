@@ -113,6 +113,9 @@ data:
             # hop_length: local sync
             win_length: 400
             bits: ${bit_mulaw}
+        cpc:
+            # clip_length_mel: compute
+            n_utterances_per_speaker: 8
 """
 
 
@@ -194,6 +197,9 @@ def conf_programatic(conf: ConfGlobal) -> ConfGlobal:
     # Target: `conf.model.vocoder.rnnms.dim_i_feature`
     conf_voc = conf.training_vocoder.model.network
     conf_voc.rnnms.dim_i_feature = conf_voc.dim_i_embedding + conf_voc.dim_speaker_embedding
+
+    # Target: `conf.data.dataset.cpc.clip_length_mel`
+    conf.data.dataset.cpc.clip_length_mel = conf.training.cpc.sample_frames + conf.training.cpc.n_prediction_steps
 
     # PlaceHolder
 

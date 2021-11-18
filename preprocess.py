@@ -50,19 +50,19 @@ class ConfPreprocessing:
     bits: int = MISSING
 
 
-def wave_to_mu_mel(wave: ND_FP32, conf: ConfPreprocessing) -> Tuple[ND_LONG, ND_FP32]:
+def wave_to_mel(wave: ND_FP32, conf: ConfPreprocessing) -> ND_FP32:
     """
-    Convert a waveform into μ-law waveform and mel spectrogram.
+    Convert a waveform into a mel spectrogram.
 
     Args:
         wave: Target waveform
         conf: Configuration of preprocessing
     """
     # Scale adjustment: [?, ?] -> (-1, +1)
-    wave = wave / np.abs(wave).max() * 0.999
+    wave_s = wave / np.abs(wave).max() * 0.999
 
     # Preemphasis -> melspectrogram -> log-mel spec -> ? -> μ-law
-    mel: ND_FP32 = librosa.feature.melspectrogram(preemphasis(wave, conf.preemph),
+    mel: ND_FP32 = librosa.feature.melspectrogram(preemphasis(wave_s, conf.preemph),
                                          sr=conf.sr,
                                          n_fft=conf.n_fft,
                                          n_mels=conf.n_mels,
@@ -72,7 +72,22 @@ def wave_to_mu_mel(wave: ND_FP32, conf: ConfPreprocessing) -> Tuple[ND_LONG, ND_
                                          power=1)
     logmel: ND_FP32 = librosa.amplitude_to_db(mel, top_db=conf.top_db)
     logmel: ND_FP32 = logmel / conf.top_db + 1.
+    return logmel
 
+
+def wave_to_mu_mel(wave: ND_FP32, conf: ConfPreprocessing) -> Tuple[ND_LONG, ND_FP32]:
+    """
+    Convert a waveform into μ-law waveform and mel spectrogram.
+
+    Args:
+        wave: Target waveform
+        conf: Configuration of preprocessing
+    """
+    # mel
+    logmel = wave_to_mel(wave, conf)
+
+    # Scale adjustment: [?, ?] -> (-1, +1)
+    wave = wave / np.abs(wave).max() * 0.999
     mulaw = mulaw_encode(wave, mu=2**conf.bits)
 
     return mulaw, logmel
@@ -98,4 +113,14 @@ def process_to_mel_mu(
     path_o_mulaw.parent.mkdir(parents=True, exist_ok=True)
     path_o_mel.parent.mkdir(parents=True, exist_ok=True)
     np.save(path_o_mulaw, mu_law)
+    np.save(path_o_mel, spec)
+
+
+def process_to_mel(path_i_wav: Path, path_o_mel: Path, conf: ConfPreprocessing) -> None:
+    """Preprocess specified audio file into mel-spectrogram file.
+    """
+    # Load, process then save.
+    wave: ND_FP32 = librosa.load(path_i_wav, sr=conf.sr)[0]
+    spec = wave_to_mel(wave, conf)
+    path_o_mel.parent.mkdir(parents=True, exist_ok=True)
     np.save(path_o_mel, spec)

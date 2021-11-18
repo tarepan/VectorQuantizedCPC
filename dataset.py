@@ -146,7 +146,7 @@ class ZR19CPCMelSpkDataset(Dataset[Datum_ZR19CPC]):
         spk_idx = self._speakers.index(spk_id)
         # Random sampled ids
         uttr_ids = self._item_per_spk[spk_id]
-        item_ids: List[ItemIdZR19] = random.sample(uttr_ids, self.n_utterances_per_speaker)
+        item_ids: List[ItemIdZR19] = random.sample(uttr_ids, self.conf.n_utterances_per_speaker)
 
         if self._train:
             # Stack a clipped mel-spec of utterances from single speaker
@@ -156,10 +156,10 @@ class ZR19CPCMelSpkDataset(Dataset[Datum_ZR19CPC]):
                 mel: ND_FP32 = load(get_dataset_mel_path(self._path_contents, item_id))
                 start = random.randint(0, mel.shape[-1] - self.conf.clip_length_mel)
                 mels.append(mel[:, start : start + self.conf.clip_length_mel])
-            return from_numpy(np.stack(mels)), spk_idx
+            return from_numpy(np.stack(mels)).float(), spk_idx
         else:
             mel: ND_FP32 = load(get_dataset_mel_path(self._path_contents, item_ids[0]))
-            return from_numpy(np.stack([mel])), spk_idx
+            return from_numpy(np.stack([mel])).float(), spk_idx
 
     def __getitem__(self, n: int) -> Datum_ZR19CPC:
         """Load n-th speaker's data.

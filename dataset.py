@@ -99,7 +99,7 @@ class ZR19CPCMelSpkDataset(Dataset[Datum_ZR19CPC]):
             # Load item_per_spk dict
             with open(get_path_dataset_item_per_spk(self._path_contents), mode='rb') as f:
                 self._item_per_spk: Dict[str, List[ItemIdZR19]] = pickle.load(f)
-        self._speakers: List[str] = list(self._ids_per_spk.keys())
+        self._speakers: List[str] = list(self._item_per_spk.keys())
 
     def _generate_dataset_contents(self) -> None:
         """Generate dataset with corpus auto-download and preprocessing.

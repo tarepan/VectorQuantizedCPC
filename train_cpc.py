@@ -1,5 +1,3 @@
-import hydra
-from hydra import utils
 from itertools import chain
 from pathlib import Path
 from tqdm import tqdm
@@ -30,15 +28,15 @@ def save_checkpoint(encoder, cpc, optimizer, scheduler, epoch, checkpoint_dir):
         "epoch": epoch
     }
     checkpoint_dir.mkdir(exist_ok=True, parents=True)
-    checkpoint_path = checkpoint_dir / "model.ckpt-{}.pt".format(epoch)
+    checkpoint_path = checkpoint_dir / f"model.ckpt-{epoch}.pt"
     torch.save(checkpoint_state, checkpoint_path)
-    print("Saved checkpoint: {}".format(checkpoint_path.stem))
+    print(f"Saved checkpoint: {checkpoint_path.stem}")
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 def train_model(cfg: ConfGlobal):
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    checkpoint_dir = Path(utils.to_absolute_path(cfg.checkpoint_dir))
+    checkpoint_dir = Path(cfg.checkpoint_dir)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -65,7 +63,7 @@ def train_model(cfg: ConfGlobal):
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     if cfg.resume:
         print("Resume checkpoint from: {}:".format(cfg.resume))
-        resume_path = utils.to_absolute_path(cfg.resume)
+        resume_path = cfg.resume
         checkpoint = torch.load(resume_path, map_location=lambda storage, loc: storage)
         encoder.load_state_dict(checkpoint["encoder"])
         cpc.load_state_dict(checkpoint["cpc"])
@@ -77,7 +75,7 @@ def train_model(cfg: ConfGlobal):
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     # Dataset
-    root_path = Path(utils.to_absolute_path("datasets")) / cfg.dataset.path
+    root_path = Path("datasets") / cfg.dataset.path
     # Item: (Utterance, Freq, T_clipped) from single speaker
     dataset = CPCDataset(
         root=root_path,

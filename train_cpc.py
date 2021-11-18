@@ -8,7 +8,6 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 
 from dataset import CPCDataset
 from scheduler import WarmupScheduler
@@ -39,9 +38,7 @@ def save_checkpoint(encoder, cpc, optimizer, scheduler, epoch, checkpoint_dir):
 
 def train_model(cfg: ConfGlobal):
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    tensorboard_path = Path(utils.to_absolute_path("tensorboard")) / cfg.checkpoint_dir
     checkpoint_dir = Path(utils.to_absolute_path(cfg.checkpoint_dir))
-    writer = SummaryWriter(tensorboard_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -144,9 +141,9 @@ def train_model(cfg: ConfGlobal):
         # Logging
         if epoch % cfg.training.log_interval == 0 and epoch != start_epoch:
             ## TB
-            writer.add_scalar("cpc_loss/train", average_cpc_loss, epoch)
-            writer.add_scalar("vq_loss/train", average_vq_loss, epoch)
-            writer.add_scalar("perplexity/train", average_perplexity, epoch)
+            # writer.add_scalar("cpc_loss/train", average_cpc_loss, epoch)
+            # writer.add_scalar("vq_loss/train", average_vq_loss, epoch)
+            # writer.add_scalar("perplexity/train", average_perplexity, epoch)
             ## console
             print("epoch:{}, cpc loss:{:.2E}, vq loss:{:.2E}, perpexlity:{:.3f}"
                   .format(epoch, cpc_loss, average_vq_loss, average_perplexity))

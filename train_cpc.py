@@ -1,5 +1,3 @@
-import hydra
-from hydra import utils
 from itertools import chain
 from pathlib import Path
 from tqdm import tqdm
@@ -8,21 +6,20 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 
-from dataset import CPCDataset
+from dataset import ZR19CPCMelSpkDataset
 from scheduler import WarmupScheduler
 from model import Encoder, CPCLoss
 from config import load_conf, ConfGlobal
 
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-def save_checkpoint(encoder, cpc, optimizer, scheduler, epoch, checkpoint_dir):
+def save_checkpoint(encoder, cpc, optimizer, scheduler, epoch, checkpoint_dir: Path):
     """Save model and learning states.
-    
+
     Number in filename indicates `epoch`.
     """
-    
+
     checkpoint_state = {
         "encoder": encoder.state_dict(),
         "cpc": cpc.state_dict(),
@@ -31,44 +28,43 @@ def save_checkpoint(encoder, cpc, optimizer, scheduler, epoch, checkpoint_dir):
         "epoch": epoch
     }
     checkpoint_dir.mkdir(exist_ok=True, parents=True)
-    checkpoint_path = checkpoint_dir / "model.ckpt-{}.pt".format(epoch)
+    checkpoint_path = checkpoint_dir / f"model.ckpt-{epoch}.pt"
     torch.save(checkpoint_state, checkpoint_path)
-    print("Saved checkpoint: {}".format(checkpoint_path.stem))
+    print(f"Saved checkpoint: {checkpoint_path.stem}")
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 def train_model(cfg: ConfGlobal):
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    tensorboard_path = Path(utils.to_absolute_path("tensorboard")) / cfg.checkpoint_dir
-    checkpoint_dir = Path(utils.to_absolute_path(cfg.checkpoint_dir))
-    writer = SummaryWriter(tensorboard_path)
+    checkpoint_dir = Path(cfg.checkpoint_dir)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    encoder = Encoder(**cfg.model.encoder)
-    cpc = CPCLoss(**cfg.model.cpc)
+    encoder = Encoder(cfg.model.encoder)
+    cpc = CPCLoss(cfg.model.cpc)
 
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     encoder.to(device)
     cpc.to(device)
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+    conf_sched = conf.training.cpc.scheduler
     # Adam & (original) WarmupScheduler
     optimizer = optim.Adam(
         chain(encoder.parameters(), cpc.parameters()),
-        lr=cfg.training.scheduler.initial_lr)
+        lr=conf_sched.initial_lr)
     scheduler = WarmupScheduler(
         optimizer,
-        warmup_epochs=cfg.training.scheduler.warmup_epochs,
-        initial_lr=cfg.training.scheduler.initial_lr,
-        max_lr=cfg.training.scheduler.max_lr,
-        milestones=cfg.training.scheduler.milestones,
-        gamma=cfg.training.scheduler.gamma)
+        warmup_epochs=conf_sched.warmup_epochs,
+        initial_lr=conf_sched.initial_lr,
+        max_lr=conf_sched.max_lr,
+        milestones=conf_sched.milestones,
+        gamma=conf_sched.gamma)
 
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    if cfg.resume:
-        print("Resume checkpoint from: {}:".format(cfg.resume))
-        resume_path = utils.to_absolute_path(cfg.resume)
+    if cfg.resume != "scratch":
+        print(f"Resume checkpoint from: {cfg.resume}:")
+        resume_path = cfg.resume
         checkpoint = torch.load(resume_path, map_location=lambda storage, loc: storage)
         encoder.load_state_dict(checkpoint["encoder"])
         cpc.load_state_dict(checkpoint["cpc"])
@@ -79,31 +75,23 @@ def train_model(cfg: ConfGlobal):
         start_epoch = 1
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    # Dataset
-    root_path = Path(utils.to_absolute_path("datasets")) / cfg.dataset.path
     # Item: (Utterance, Freq, T_clipped) from single speaker
-    dataset = CPCDataset(
-        root=root_path,
-        n_sample_frames=cfg.training.sample_frames + cfg.training.n_prediction_steps,
-        n_utterances_per_speaker=cfg.training.n_utterances_per_speaker,
-        hop_length=cfg.preprocessing.hop_length,
-        sr=cfg.preprocessing.sr)
+    dataset = ZR19CPCMelSpkDataset(True, cfg.data.dataset.cpc)
 
     # Batch: (Speaker, Utterance, Freq, T_clipped)
     dataloader = DataLoader(
         dataset,
-        batch_size=cfg.training.n_speakers_per_batch,
+        batch_size=cfg.training.cpc.n_speakers_per_batch,
         shuffle=True,
-        num_workers=cfg.training.n_workers,
-        pin_memory=True,
+        num_workers=1, pin_memory=True,
         drop_last=True)
 
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    for epoch in range(start_epoch, cfg.training.n_epochs + 1):
+    for epoch in range(start_epoch, cfg.training.cpc.n_epochs + 1):
         ################################ epoch ################################
-        if epoch % cfg.training.log_interval == 0 or epoch == start_epoch:
+        if epoch % cfg.training.cpc.log_interval == 0 or epoch == start_epoch:
             average_cpc_loss = average_vq_loss = average_perplexity = 0
-            average_accuracies = np.zeros(cfg.training.n_prediction_steps // 2)
+            average_accuracies = np.zeros(cfg.training.cpc.n_prediction_steps // 2)
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
         for i, (mels, _) in enumerate(tqdm(dataloader), 1):
@@ -113,8 +101,8 @@ def train_model(cfg: ConfGlobal):
             # As batch of clipped mel-spectrogram (No distinguish between speakers and utterances)
             # (Spk*Utt, Freq, T_clipped)
             mels = mels.view(
-                cfg.training.n_speakers_per_batch * cfg.training.n_utterances_per_speaker,
-                cfg.preprocessing.n_mels,
+                cfg.training.cpc.n_speakers_per_batch * cfg.training.cpc.n_utterances_per_speaker,
+                cfg.dim_mel_freq,
                 -1
             )
 
@@ -142,17 +130,17 @@ def train_model(cfg: ConfGlobal):
 
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         # Logging
-        if epoch % cfg.training.log_interval == 0 and epoch != start_epoch:
+        if epoch % cfg.training.cpc.log_interval == 0 and epoch != start_epoch:
             ## TB
-            writer.add_scalar("cpc_loss/train", average_cpc_loss, epoch)
-            writer.add_scalar("vq_loss/train", average_vq_loss, epoch)
-            writer.add_scalar("perplexity/train", average_perplexity, epoch)
+            # writer.add_scalar("cpc_loss/train", average_cpc_loss, epoch)
+            # writer.add_scalar("vq_loss/train", average_vq_loss, epoch)
+            # writer.add_scalar("perplexity/train", average_perplexity, epoch)
             ## console
             print("epoch:{}, cpc loss:{:.2E}, vq loss:{:.2E}, perpexlity:{:.3f}"
                   .format(epoch, cpc_loss, average_vq_loss, average_perplexity))
             print(100 * average_accuracies)
         # Checkpointing
-        if epoch % cfg.training.checkpoint_interval == 0 and epoch != start_epoch:
+        if epoch % cfg.training.cpc.checkpoint_interval == 0 and epoch != start_epoch:
             save_checkpoint(
                 encoder, cpc, optimizer,
                 scheduler, epoch, checkpoint_dir)

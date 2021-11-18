@@ -22,6 +22,8 @@ cpc_checkpoint: checkpoints/cpc/english2019/model.ckpt-22000.pt
 vocoder_checkpoint: checkpoints/vocoder/english2019/version1/model.ckpt-xxxxxx.pt
 save_auxiliary: False
 synthesis_list: ./target_vc.json
+checkpoint_dir: ./ckpt
+resume: scratch
 model:
     encoder:
         in_channels: ${dim_mel_freq}
@@ -111,6 +113,9 @@ data:
             # hop_length: local sync
             win_length: 400
             bits: ${bit_mulaw}
+        cpc:
+            # clip_length_mel: compute
+            n_utterances_per_speaker: 8
 """
 
 
@@ -156,6 +161,8 @@ class ConfGlobal:
         vocoder_checkpoint: RNNMS vocoder checkpoint
         save_auxiliary:
         synthesis_list:
+        checkpoint_dir: Path of checkpoint directory
+        resume: Path of resume checkpoint
     """
     seed: int = MISSING
     sampling_rate: int = MISSING
@@ -169,6 +176,8 @@ class ConfGlobal:
     vocoder_checkpoint: str = MISSING
     save_auxiliary: bool = MISSING
     synthesis_list: str = MISSING
+    checkpoint_dir: str = MISSING
+    resume: str = MISSING
     model: ConfModel = ConfModel()
     training: ConfTraining = ConfTraining()
     training_vocoder: ConfTrainVocoder = ConfTrainVocoder()
@@ -188,6 +197,9 @@ def conf_programatic(conf: ConfGlobal) -> ConfGlobal:
     # Target: `conf.model.vocoder.rnnms.dim_i_feature`
     conf_voc = conf.training_vocoder.model.network
     conf_voc.rnnms.dim_i_feature = conf_voc.dim_i_embedding + conf_voc.dim_speaker_embedding
+
+    # Target: `conf.data.dataset.cpc.clip_length_mel`
+    conf.data.dataset.cpc.clip_length_mel = conf.training.cpc.sample_frames + conf.training.cpc.n_prediction_steps
 
     # PlaceHolder
 

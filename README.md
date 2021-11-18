@@ -48,18 +48,15 @@ Pre-trained weight of both models are [here](https://github.com/bshall/VectorQua
 #### 3-A. Encoder <!-- omit in toc -->
 ```bash
 python train_cpc.py \
-    checkpoint_dir=path/to/checkpoint_dir \
-    dataset=[2019/english or 2019/surprise]
-
-# Example
-python train_cpc.py checkpoint_dir=checkpoints/cpc/2019english dataset=2019/english
+    data.dataset.adress_data_root=dataset/will_be/saved/here \
+    checkpoint_dir=checkpoint/will_be/saved/here
 ```
 
 #### 3-B. Vocoder <!-- omit in toc -->
 ```bash
-python train_vocoder.py \
+python train_vocoder_main.py \
+    data.dataset.adress_data_root=dataset/will_be/saved/here \
     cpc_checkpoint=checkpoints/cpc/english2019/model.ckpt-22000.pt \
-    checkpoint_dir=path/to/your/checkpoint/dir \
 ```
 
 Sample audios will be periodically generated in `./out_sample` directory.
@@ -106,7 +103,8 @@ You can preview ABX score of the pretrained english model in original repository
 
 ## Results
 ### Training Speed <!-- omit in toc -->
-Vocoder: 0.84 [iter/sec] @ NVIDIA  Google Colaboratory (AMP-) == 2.2 days/160000steps  
+- Encoder: 15.5 [iter/sec] @ NVIDIA P100 (AMP-) Google Colaboratory == 4.7 hours/22000epochs 
+- Vocoder: 0.84 [iter/sec] @ NVIDIA      (AMP-) Google Colaboratory == 2.2 days/160000steps
 
 ## Original paper
 [![Paper](http://img.shields.io/badge/paper-arxiv.2005.09409-B31B1B.svg)][paper]  

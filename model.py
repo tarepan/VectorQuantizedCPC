@@ -195,7 +195,7 @@ class CPCLoss(nn.Module):
             nn.Linear(c_dim, z_dim) for _ in range(n_prediction_steps)
         ])
 
-    def forward(self, z: Tensor, c: Tesnor):
+    def forward(self, z: Tensor, c: Tensor):
         """
         Execute Contrastive Predictive Coding.
 

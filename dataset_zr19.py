@@ -48,17 +48,19 @@ class ConfDataset:
         clip_length_mel: Clipping length with mel frame unit.
         mel_stft_stride: hop length of mel-spectrogram STFT.
     """
+    name: str = MISSING
     adress_data_root: Optional[str] = MISSING
     clip_length_mel: int = MISSING
     mel_stft_stride: int = MISSING
-    corpus: ConfCorpus = ConfCorpus(mirror_root="${..adress_data_root}")
-    preprocess: ConfPreprocessing = ConfPreprocessing(hop_length="${..mel_stft_stride}")
+    corpus: ConfCorpus = ConfCorpus(
+        mirror_root="${..adress_data_root}",)
+    preprocess: ConfPreprocessing = ConfPreprocessing(
+        hop_length="${..mel_stft_stride}",)
     cpc: ConfCPCDataset = ConfCPCDataset(
         adress_data_root="${..adress_data_root}",
         mel_stft_stride="${..mel_stft_stride}",
         corpus="${..corpus}",
-        preprocess="${..preprocess}",
-    )
+        preprocess="${..preprocess}",)
 
 
 class ZR19MulawMelSpkDataset(Dataset[Datum_ZR19]):

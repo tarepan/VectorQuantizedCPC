@@ -97,6 +97,7 @@ data:
         num_workers: 8
         pin_memory: null
     dataset:
+        name: ZR19
         adress_data_root: null
         clip_length_mel: 32
         mel_stft_stride: 160

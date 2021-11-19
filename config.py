@@ -54,7 +54,6 @@ training:
             milestones:
                 - 20000
         checkpoint_interval: 2000
-        n_workers: 8
         log_interval: 10
 training_vocoder:
     model:
@@ -138,7 +137,6 @@ class ConfTrainCPC:
     n_epochs: int = MISSING
     scheduler: ConfTrainCPCSched = ConfTrainCPCSched()
     checkpoint_interval: int = MISSING
-    n_workers: int = MISSING
     log_interval: int = MISSING    
 
 

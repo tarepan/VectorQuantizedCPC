@@ -187,6 +187,11 @@ class ZR19CPCMelSpkDataset(Dataset[Datum_ZR19CPC]):
         return len(self._speakers)
 
 
+def get_dataset_mel_path_JVS(dir_dataset: Path, item_id: ItemIdJVS) -> Path:
+    """Get mel-spec item path in dataset.
+    """
+    return dir_dataset / item_id.subtype / f"{item_id.speaker}" / "mels" / f"{item_id.serial_num}.mel.npy"
+
 Datum_JVSCPC = Tuple[FloatTensor, int]
 
 class JVSCPCMelSpkDataset(Dataset[Datum_JVSCPC]):
@@ -272,7 +277,7 @@ class JVSCPCMelSpkDataset(Dataset[Datum_JVSCPC]):
         print("Preprocessing...")
         for item_id in tqdm(sum(list(self._ids_per_spk.values()), [])):
             path_i_wav = self._corpus.get_item_path(item_id)
-            path_o_mel = get_dataset_mel_path(self._path_contents, item_id)
+            path_o_mel = get_dataset_mel_path_JVS(self._path_contents, item_id)
             process_to_mel(path_i_wav, path_o_mel, self.conf.preprocess)
         print("Preprocessed.")
 
@@ -292,12 +297,12 @@ class JVSCPCMelSpkDataset(Dataset[Datum_JVSCPC]):
             mels: List[ND_FP32] = []
             for item_id in item_ids:
                 # Time-directional clipping: (freq, T_mel) -> (freq, clip_length_mel)
-                mel: ND_FP32 = load(get_dataset_mel_path(self._path_contents, item_id))
+                mel: ND_FP32 = load(get_dataset_mel_path_JVS(self._path_contents, item_id))
                 start = random.randint(0, mel.shape[-1] - self.conf.clip_length_mel)
                 mels.append(mel[:, start : start + self.conf.clip_length_mel])
             return from_numpy(np.stack(mels)).float(), spk_idx
         else:
-            mel: ND_FP32 = load(get_dataset_mel_path(self._path_contents, item_ids[0]))
+            mel: ND_FP32 = load(get_dataset_mel_path_JVS(self._path_contents, item_ids[0]))
             return from_numpy(np.stack([mel])).float(), spk_idx
 
     def __getitem__(self, n: int) -> Datum_ZR19CPC:

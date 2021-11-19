@@ -53,7 +53,7 @@ training:
             gamma: 0.25
             milestones:
                 - 20000
-        checkpoint_interval: 500
+        checkpoint_interval: 2000
         n_workers: 8
         log_interval: 10
 training_vocoder:

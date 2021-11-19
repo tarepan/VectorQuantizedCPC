@@ -12,6 +12,8 @@ from omegaconf import MISSING
 import numpy as np
 from numpy import load
 import librosa
+from tqdm import tqdm
+from scipy.io import wavfile
 
 from ZR19 import ConfCorpus, ItemIdZR19, ZR19
 from JVS import ItemIdJVS, JVS
@@ -22,15 +24,25 @@ ND_FP32 = npt.NDArray[np.float32]
 ND_LONG = npt.NDArray[np.int32]
 
 
-def get_path_dataset_item_per_spk(dir_dataset: Path) -> Path:
+def len_wav(path: Path, target_sr: int) -> int:
+    """Length of waveform in given sampling rate.
+    
+    1sec 16kHz => L=16000
+    1sec 24kHz w/ 16kHz resampling => L=16000
+    """
+    sr_raw, wave = wavfile.read(path)
+    return int(len(wave) / (sr_raw/target_sr))
+
+
+def get_path_dataset_ids_per_spk(dir_dataset: Path) -> Path:
     """Get path of item per speaker dict of the dataset.
     """
-    return dir_dataset / "item_per_spk.pickle.bin"
+    return dir_dataset / "ids_per_spk.pickle.bin"
 
 def get_dataset_mel_path(dir_dataset: Path, item_id: ItemIdZR19) -> Path:
     """Get mel-spec item path in dataset.
     """
-    return dir_dataset / item_id.subtype / item_id.speaker / "mels" / f"{item_id.utterance_name}.mel.npy"
+    return dir_dataset / item_id.subtype / f"{item_id.speaker}" / "mels" / f"{item_id.utterance_name}.mel.npy"
 
 
 Datum_ZR19CPC = Tuple[FloatTensor, int]
@@ -97,10 +109,10 @@ class ZR19CPCMelSpkDataset(Dataset[Datum_ZR19CPC]):
             save_archive(self._path_contents, adress_archive)
             print("Dataset contents was generated and archive was saved.")
         else:
-            # Load item_per_spk dict
-            with open(get_path_dataset_item_per_spk(self._path_contents), mode='rb') as f:
-                self._item_per_spk: Dict[str, List[ItemIdZR19]] = pickle.load(f)
-        self._speakers: List[str] = list(self._item_per_spk.keys())
+            # Load ids_per_spk dict
+            with open(get_path_dataset_ids_per_spk(self._path_contents), mode='rb') as f:
+                self._ids_per_spk: Dict[str, List[ItemIdZR19]] = pickle.load(f)
+        self._speakers: List[str] = list(self._ids_per_spk.keys())
 
     def _generate_dataset_contents(self) -> None:
         """Generate dataset with corpus auto-download and preprocessing.
@@ -112,7 +124,7 @@ class ZR19CPCMelSpkDataset(Dataset[Datum_ZR19CPC]):
         ## Based on audio length
         ids_enough_long: List[ItemIdZR19] = [
             item_id for item_id in self._corpus.get_identities()
-            if len(librosa.load(self._corpus.get_item_path(item_id), sr=self.conf.preprocess.sr)[0])
+            if len_wav(self._corpus.get_item_path(item_id), self.conf.preprocess.sr)
             >
             self.conf.clip_length_mel * self.conf.mel_stft_stride
         ]
@@ -125,14 +137,14 @@ class ZR19CPCMelSpkDataset(Dataset[Datum_ZR19CPC]):
             if len(utts) >= self.conf.n_utterances_per_speaker
         }
 
-        # Save the item_per_spk dict
-        path_item_per_spk = get_path_dataset_item_per_spk(self._path_contents)
-        path_item_per_spk.parent.mkdir(parents=True, exist_ok=True)
-        with open(path_item_per_spk, mode='wb') as f:
+        # Save the ids_per_spk dict
+        path_ids_per_spk = get_path_dataset_ids_per_spk(self._path_contents)
+        path_ids_per_spk.parent.mkdir(parents=True, exist_ok=True)
+        with open(path_ids_per_spk, mode='wb') as f:
             pickle.dump(self._ids_per_spk, f)
 
         print("Preprocessing...")
-        for item_id in sum(list(self._ids_per_spk.values()), []):
+        for item_id in tqdm(sum(list(self._ids_per_spk.values()), [])):
             path_i_wav = self._corpus.get_item_path(item_id)
             path_o_mel = get_dataset_mel_path(self._path_contents, item_id)
             process_to_mel(path_i_wav, path_o_mel, self.conf.preprocess)
@@ -146,7 +158,7 @@ class ZR19CPCMelSpkDataset(Dataset[Datum_ZR19CPC]):
 
         spk_idx = self._speakers.index(spk_id)
         # Random sampled ids
-        uttr_ids = self._item_per_spk[spk_id]
+        uttr_ids = self._ids_per_spk[spk_id]
         item_ids: List[ItemIdZR19] = random.sample(uttr_ids, self.conf.n_utterances_per_speaker)
 
         if self._train:
@@ -223,10 +235,10 @@ class JVSCPCMelSpkDataset(Dataset[Datum_JVSCPC]):
             save_archive(self._path_contents, adress_archive)
             print("Dataset contents was generated and archive was saved.")
         else:
-            # Load item_per_spk dict
-            with open(get_path_dataset_item_per_spk(self._path_contents), mode='rb') as f:
-                self._item_per_spk: Dict[int, List[ItemIdJVS]] = pickle.load(f)
-        self._speakers: List[int] = list(self._item_per_spk.keys())
+            # Load ids_per_spk dict
+            with open(get_path_dataset_ids_per_spk(self._path_contents), mode='rb') as f:
+                self._ids_per_spk: Dict[int, List[ItemIdJVS]] = pickle.load(f)
+        self._speakers: List[int] = list(self._ids_per_spk.keys())
 
     def _generate_dataset_contents(self) -> None:
         """Generate dataset with corpus auto-download and preprocessing.
@@ -238,7 +250,7 @@ class JVSCPCMelSpkDataset(Dataset[Datum_JVSCPC]):
         ## Based on audio length
         ids_enough_long: List[ItemIdJVS] = [
             item_id for item_id in self._corpus.get_identities()
-            if len(librosa.load(self._corpus.get_item_path(item_id), sr=self.conf.preprocess.sr)[0])
+            if len_wav(self._corpus.get_item_path(item_id), self.conf.preprocess.sr)
             >
             self.conf.clip_length_mel * self.conf.mel_stft_stride
         ]
@@ -251,14 +263,14 @@ class JVSCPCMelSpkDataset(Dataset[Datum_JVSCPC]):
             if len(utts) >= self.conf.n_utterances_per_speaker
         }
 
-        # Save the item_per_spk dict
-        path_item_per_spk = get_path_dataset_item_per_spk(self._path_contents)
-        path_item_per_spk.parent.mkdir(parents=True, exist_ok=True)
-        with open(path_item_per_spk, mode='wb') as f:
+        # Save the ids_per_spk dict
+        path_ids_per_spk = get_path_dataset_ids_per_spk(self._path_contents)
+        path_ids_per_spk.parent.mkdir(parents=True, exist_ok=True)
+        with open(path_ids_per_spk, mode='wb') as f:
             pickle.dump(self._ids_per_spk, f)
 
         print("Preprocessing...")
-        for item_id in sum(list(self._ids_per_spk.values()), []):
+        for item_id in tqdm(sum(list(self._ids_per_spk.values()), [])):
             path_i_wav = self._corpus.get_item_path(item_id)
             path_o_mel = get_dataset_mel_path(self._path_contents, item_id)
             process_to_mel(path_i_wav, path_o_mel, self.conf.preprocess)
@@ -272,7 +284,7 @@ class JVSCPCMelSpkDataset(Dataset[Datum_JVSCPC]):
 
         spk_idx = self._speakers.index(spk_id)
         # Random sampled ids
-        uttr_ids = self._item_per_spk[spk_id]
+        uttr_ids = self._ids_per_spk[spk_id]
         item_ids: List[ItemIdJVS] = random.sample(uttr_ids, self.conf.n_utterances_per_speaker)
 
         if self._train:

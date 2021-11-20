@@ -11,7 +11,6 @@ from corpuspy.components.archive import hash_args, try_to_acquire_archive_conten
 from omegaconf import MISSING
 import numpy as np
 from numpy import load
-import librosa
 from tqdm import tqdm
 from scipy.io import wavfile
 
@@ -22,6 +21,45 @@ from preprocess import ConfPreprocessing, process_to_mel
 import numpy.typing as npt
 ND_FP32 = npt.NDArray[np.float32]
 ND_LONG = npt.NDArray[np.int32]
+
+
+def dataset_adress(
+    root_adress: Optional[str],
+    corpus_name: str,
+    dataset_type: str,
+    preprocess_args,
+    ) -> Tuple[str, Path]:
+    """Path of dataset archive file and contents directory.
+
+    Args:
+        root_adress: Optional[str],
+        corpus_name: str,
+        dataset_type: str,
+        preprocess_args,
+    Returns: [archive file adress, contents directory path]
+    """
+    # Design Notes:
+    #   Why not `Path` object? -> Archive adress could be remote url
+    #
+    # Original Data (corpus) / Prepared Data (dataset) / Transformation (preprocss)
+    #   If use different original data, everything change.
+    #   Original item can be transformed into different type of data.
+    #   Even if data type is same, value could be changed by processing parameters.
+    #
+    # Directory structure:
+    #     datasets/{corpus_name}/{dataset_type}/
+    #         archive/{preprocess_args}.zip
+    #         contents/{preprocess_args}/{actual_data_here}
+
+    # Contents: Placed under default local directory
+    contents_root = local_root = "./tmp"
+    # Archive: Placed under given adress or default local directory
+    archive_root = root_adress or local_root
+
+    rel_dataset = f"datasets/{corpus_name}/{dataset_type}"
+    archive_file = f"{archive_root}/{rel_dataset}/archive/{preprocess_args}.zip"
+    contents_dir = f"{contents_root}/{rel_dataset}/contents/{preprocess_args}"
+    return archive_file, contents_dir
 
 
 def len_wav(path: Path, target_sr: int) -> int:
@@ -82,23 +120,11 @@ class ZR19CPCMelSpkDataset(Dataset[Datum_ZR19CPC]):
         # Store parameters.
         self.conf = conf
         self._train = train
-
-        self._corpus = ZR19(conf.corpus)
         arg_hash = hash_args(conf.preprocess.sr, conf.preprocess.bits, conf.preprocess.hop_length, conf.clip_length_mel)
-        archive_name = f"{arg_hash}.zip"
+        adress_archive, self._path_contents = dataset_adress(conf.adress_data_root, "ZR19", "cpc_mel_spk", arg_hash)
 
-        archive_root = conf.adress_data_root
-        # Directory to which contents are extracted and archive is placed
-        # if adress is not provided.
-        local_root = Path(".")/"tmp"/"ZR19_mel_cpc"
-
-        # Archive: placed in given adress (conf) or default adress (local dataset directory)
-        adress_archive_given = f"{archive_root}/datasets/ZR19/cpc/{archive_name}" if archive_root else None
-        adress_archive_default = str(local_root/"archive"/archive_name)
-        adress_archive = adress_archive_given or adress_archive_default
-
-        # Contents: contents are extracted in local dataset directory
-        self._path_contents = local_root/"contents"/arg_hash
+        # Corpus
+        self._corpus = ZR19(conf.corpus)
 
         # Deploy dataset contents.
         contents_acquired = try_to_acquire_archive_contents(adress_archive, self._path_contents)
@@ -213,23 +239,11 @@ class JVSCPCMelSpkDataset(Dataset[Datum_JVSCPC]):
         # Store parameters.
         self.conf = conf
         self._train = train
-
-        self._corpus = JVS(conf.corpus)
         arg_hash = hash_args(conf.preprocess.sr, conf.preprocess.bits, conf.preprocess.hop_length, conf.clip_length_mel)
-        archive_name = f"{arg_hash}.zip"
+        adress_archive, self._path_contents = dataset_adress(conf.adress_data_root, "JVS", "cpc_mel_spk", arg_hash)
 
-        archive_root = conf.adress_data_root
-        # Directory to which contents are extracted and archive is placed
-        # if adress is not provided.
-        local_root = Path(".")/"tmp"/"JVS_mel_cpc"
-
-        # Archive: placed in given adress (conf) or default adress (local dataset directory)
-        adress_archive_given = f"{archive_root}/datasets/JVS/cpc/{archive_name}" if archive_root else None
-        adress_archive_default = str(local_root/"archive"/archive_name)
-        adress_archive = adress_archive_given or adress_archive_default
-
-        # Contents: contents are extracted in local dataset directory
-        self._path_contents = local_root/"contents"/arg_hash
+        # Corpus
+        self._corpus = JVS(conf.corpus)
 
         # Deploy dataset contents.
         contents_acquired = try_to_acquire_archive_contents(adress_archive, self._path_contents)

@@ -13,7 +13,7 @@ from numpy import load
 import librosa
 
 from ZR19 import ConfCorpus, ItemIdZR19, ZR19
-from dataset import ConfCPCDataset
+from dataset import ConfCPCDataset, dataset_adress
 from preprocess import ConfPreprocessing, process_to_mel_mu
 
 import numpy.typing as npt
@@ -82,23 +82,11 @@ class ZR19MulawMelSpkDataset(Dataset[Datum_ZR19]):
         # Store parameters.
         self.conf = conf
         self._train = train
-
-        self._corpus = ZR19(conf.corpus)
         arg_hash = hash_args(conf.preprocess.sr, conf.preprocess.bits, conf.preprocess.hop_length, conf.clip_length_mel)
-        archive_name = f"{arg_hash}.zip"
+        adress_archive, self._path_contents = dataset_adress(conf.adress_data_root, "ZR19", "mel_mulaw", arg_hash)
 
-        archive_root = conf.adress_data_root
-        # Directory to which contents are extracted and archive is placed
-        # if adress is not provided.
-        local_root = Path(".")/"tmp"/"ZR19_mel_mulaw"
-        
-        # Archive: placed in given adress (conf) or default adress (local dataset directory)
-        adress_archive_given = f"{archive_root}/datasets/ZR19/{archive_name}" if archive_root else None
-        adress_archive_default = str(local_root/"archive"/archive_name)
-        adress_archive = adress_archive_given or adress_archive_default
-
-        # Contents: contents are extracted in local dataset directory
-        self._path_contents = local_root/"contents"/arg_hash
+        # Corpus
+        self._corpus = ZR19(conf.corpus)
 
         # Deploy dataset contents.
         contents_acquired = try_to_acquire_archive_contents(adress_archive, self._path_contents)

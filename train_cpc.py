@@ -6,11 +6,11 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
-
-from dataset import JVSCPCMelSpkDataset, ZR19CPCMelSpkDataset
+from speechcorpusy.presets import ZR19, JVS
 from scheduler import WarmupScheduler
 from model import Encoder, CPCLoss
 from config import load_conf, ConfGlobal
+from data.datasets.cpcmelspk import CPCMelSpkDataset
 
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -75,15 +75,15 @@ def train_model(cfg: ConfGlobal):
         start_epoch = 1
     # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    # Item: (Utterance, Freq, T_clipped) from single speaker
     if conf.data.dataset.name == "ZR19":
-        dataset = ZR19CPCMelSpkDataset(True, cfg.data.dataset.cpc)
-        print("Loaded dataset: ZR19CPCMelSpkDataset")
+        corpus = ZR19(conf.data.dataset.corpus)
     elif conf.data.dataset.name == "JVS":
-        dataset = JVSCPCMelSpkDataset(True, cfg.data.dataset.cpc)
-        print("Loaded dataset: JVSCPCMelSpkDataset")
+        corpus = JVS(conf.data.dataset.corpus)
     else:
         raise Exception(f"{conf.data.dataset.name} dataset is not supported.")
+    # Item: (Utterance, Freq, T_clipped) from single speaker
+    dataset = CPCMelSpkDataset(True, cfg.data.dataset.cpc, corpus)
+    print(f"Loaded dataset: CPCMelSpkDataset w/ {corpus.__class__.__name__}")
 
     # Batch: (Speaker, Utterance, Freq, T_clipped)
     dataloader = DataLoader(

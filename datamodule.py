@@ -6,6 +6,7 @@ import torch
 from torch.utils.data import random_split, DataLoader
 from pytorch_lightning import LightningDataModule
 from omegaconf import MISSING
+from speechcorpusy.interface import ConfCorpus
 
 from dataset_zr19 import ZR19MulawMelSpkDataset, ConfDataset
 from dataset_jvs import JVSMulawMelSpkDataset
@@ -50,8 +51,12 @@ class DataLoaderPerformance:
 class ConfData:
     """Configuration of data.
     """
-    loader: ConfLoader = ConfLoader()
+    adress_archive_root = MISSING
+    corpus: ConfCorpus = ConfCorpus(
+        adress_archive_root="{..adress_archive_root}"
+    )
     dataset: ConfDataset = ConfDataset()
+    loader: ConfLoader = ConfLoader()
 
 class ZR19enDataModule(LightningDataModule):
     """PL-DataModule of LJSpeech wave & mel.
@@ -76,8 +81,8 @@ class ZR19enDataModule(LightningDataModule):
         """
 
         if stage == "fit" or stage is None:
-            dataset_full_train = ZR19MulawMelSpkDataset(True, conf=self.conf.dataset)
-            dataset_full_not_train = ZR19MulawMelSpkDataset(False, conf=self.conf.dataset)
+            dataset_full_train = ZR19MulawMelSpkDataset(True, self.conf.dataset)
+            dataset_full_not_train = ZR19MulawMelSpkDataset(False, self.conf.dataset)
 
             n_full = len(dataset_full_train)
             # N-3 utterances, fixed-length.

@@ -92,17 +92,15 @@ training_vocoder:
         name_exp: default
         name_version: version_-1
 data:
-    loader:
-        batch_size: 32
-        num_workers: 8
-        pin_memory: null
+    adress_data_root: null
+    corpus:
+        # root: local sync 
+        download: false
     dataset:
         name: ZR19
         adress_data_root: null
         clip_length_mel: 32
         mel_stft_stride: 160
-        corpus:
-            download: false
         preprocess:
             sr: ${sampling_rate}
             n_fft: 2048
@@ -116,7 +114,11 @@ data:
         cpc:
             # clip_length_mel: compute
             n_utterances_per_speaker: 8
-"""
+    loader:
+        batch_size: 32
+        num_workers: 8
+        pin_memory: null
+ """
 
 
 @dataclass

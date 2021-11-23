@@ -6,13 +6,14 @@ import pickle
 
 from torch import LongTensor, FloatTensor
 from torch.utils.data import Dataset
-from corpuspy.components.archive import hash_args, try_to_acquire_archive_contents, save_archive
+from speechcorpusy.presets import ZR19
+from speechcorpusy.interface import ConfCorpus, ItemId
+from speechcorpusy.components.archive import hash_args, try_to_acquire_archive_contents, save_archive
 from omegaconf import MISSING
 import numpy as np
 from numpy import load
 import librosa
 
-from ZR19 import ConfCorpus, ItemIdZR19, ZR19
 from dataset import ConfCPCDataset, dataset_adress
 from preprocess import ConfPreprocessing, process_to_mel_mu
 
@@ -40,27 +41,6 @@ def get_dataset_mel_path(dir_dataset: Path, item_id: ItemIdZR19) -> Path:
 
 Datum_ZR19 = Tuple[LongTensor, FloatTensor, int]
 
-@dataclass
-class ConfDataset:
-    """Configuration of dataset.
-    Args:
-        adress_data_root: Root adress of data
-        clip_length_mel: Clipping length with mel frame unit.
-        mel_stft_stride: hop length of mel-spectrogram STFT.
-    """
-    name: str = MISSING
-    adress_data_root: Optional[str] = MISSING
-    clip_length_mel: int = MISSING
-    mel_stft_stride: int = MISSING
-    corpus: ConfCorpus = ConfCorpus(
-        mirror_root="${..adress_data_root}",)
-    preprocess: ConfPreprocessing = ConfPreprocessing(
-        hop_length="${..mel_stft_stride}",)
-    cpc: ConfCPCDataset = ConfCPCDataset(
-        adress_data_root="${..adress_data_root}",
-        mel_stft_stride="${..mel_stft_stride}",
-        corpus="${..corpus}",
-        preprocess="${..preprocess}",)
 
 
 class ZR19MulawMelSpkDataset(Dataset[Datum_ZR19]):

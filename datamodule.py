@@ -8,9 +8,6 @@ from pytorch_lightning import LightningDataModule
 from omegaconf import MISSING
 from speechcorpusy.interface import ConfCorpus
 
-from dataset_zr19 import ZR19MulawMelSpkDataset, ConfDataset
-from dataset_jvs import JVSMulawMelSpkDataset
-
 
 @dataclass
 class ConfLoader:
@@ -53,7 +50,7 @@ class ConfData:
     """
     adress_archive_root = MISSING
     corpus: ConfCorpus = ConfCorpus(
-        adress_archive_root="{..adress_archive_root}"
+        root="{..adress_archive_root}"
     )
     dataset: ConfDataset = ConfDataset()
     loader: ConfLoader = ConfLoader()

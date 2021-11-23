@@ -94,7 +94,6 @@ training_vocoder:
 data:
     adress_data_root: null
     corpus:
-        # root: local sync 
         download: false
     dataset:
         name: ZR19
